@@ -1,6 +1,6 @@
 [project]
 name = "twrapform"
-version = "0.0.1"
+version = "0.0.1.post1"
 description = "Running Terraform commands from Python"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
