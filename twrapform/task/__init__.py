@@ -3,8 +3,15 @@ from .options import (
     InitTaskOptions,
     OutputTaskOptions,
     PlanTaskOptions,
-    TFCommandOptions,
     WorkspaceSelectTaskOptions,
+)
+
+SupportedTerraformTask = (
+    InitTaskOptions
+    | PlanTaskOptions
+    | ApplyTaskOptions
+    | OutputTaskOptions
+    | WorkspaceSelectTaskOptions
 )
 
 __all__ = [
@@ -12,6 +19,6 @@ __all__ = [
     "InitTaskOptions",
     "OutputTaskOptions",
     "PlanTaskOptions",
-    "TFCommandOptions",
     "WorkspaceSelectTaskOptions",
+    "SupportedTerraformTask",
 ]

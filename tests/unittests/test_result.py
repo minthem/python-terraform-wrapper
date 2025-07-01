@@ -6,15 +6,14 @@ from twrapform.result import (
     TwrapformCommandTaskResult,
     TwrapformResult,
     TwrapformTaskError,
-    TwrapformTaskResult,
 )
-from twrapform.task import TFCommandOptions
+from twrapform.task import InitTaskOptions
 
 
 def test_twrapform_command_task_result_success():
     result = TwrapformCommandTaskResult(
         task_id="task_1",
-        task_option=TFCommandOptions(),
+        task_option=InitTaskOptions(),
         return_code=0,
         stdout="Success output",
         stderr="",
@@ -26,7 +25,7 @@ def test_twrapform_command_task_result_success():
 def test_twrapform_command_task_result_error():
     result = TwrapformCommandTaskResult(
         task_id="task_2",
-        task_option=TFCommandOptions(),
+        task_option=InitTaskOptions(),
         return_code=1,
         stdout="",
         stderr="Error occurred",
@@ -39,7 +38,7 @@ def test_twrapform_command_task_result_error():
 def test_pre_execution_failure():
     original_error = ValueError("Invalid input")
     result = PreExecutionFailure(
-        task_id="task_3", task_option=TFCommandOptions(), original_error=original_error
+        task_id="task_3", task_option=InitTaskOptions(), original_error=original_error
     )
     assert result.is_success() is False
     assert result.summary().startswith("[task_3] Failed before execution:")
@@ -50,21 +49,21 @@ def test_pre_execution_failure():
 def test_twrapform_result():
     command_result1 = TwrapformCommandTaskResult(
         task_id="task_1",
-        task_option=TFCommandOptions(),
+        task_option=InitTaskOptions(),
         return_code=0,
         stdout="Success output",
         stderr="",
     )
     command_result2 = TwrapformCommandTaskResult(
         task_id="task_2",
-        task_option=TFCommandOptions(),
+        task_option=InitTaskOptions(),
         return_code=0,
         stdout="Success output",
         stderr="",
     )
     pre_failure = PreExecutionFailure(
         task_id="task_3",
-        task_option=TFCommandOptions(),
+        task_option=InitTaskOptions(),
         original_error=ValueError("Invalid input"),
     )
     twrap_result = TwrapformResult(
@@ -91,14 +90,14 @@ def test_twrapform_result():
 def test_raise_on_error_multiple_results():
     success_result = TwrapformCommandTaskResult(
         task_id="task_4",
-        task_option=TFCommandOptions(),
+        task_option=InitTaskOptions(),
         return_code=0,
         stdout="All good",
         stderr="",
     )
     failure_result = TwrapformCommandTaskResult(
         task_id="task_5",
-        task_option=TFCommandOptions(),
+        task_option=InitTaskOptions(),
         return_code=2,
         stdout="Some output",
         stderr="Some error",

@@ -10,12 +10,12 @@ from .result import (
     TwrapformCommandTaskResult,
     TwrapformResult,
 )
-from .task import TFCommandOptions
+from .task import SupportedTerraformTask
 
 
 class TwrapformTask(NamedTuple):
     task_id: str | int
-    option: TFCommandOptions
+    option: SupportedTerraformTask
 
 
 @dataclass(frozen=True)
@@ -50,7 +50,7 @@ class Twrapform:
             raise ValueError(f"Task ID {task_id} does not exist")
 
     def add_task(
-        self, task_option: TFCommandOptions, task_id: str | int | None = None
+        self, task_option: SupportedTerraformTask, task_id: str | int | None = None
     ) -> Twrapform:
         """Add a task to the Twrapform object."""
 
@@ -70,7 +70,9 @@ class Twrapform:
             ),
         )
 
-    def change_task_option(self, task_id: int | str, new_option: TFCommandOptions):
+    def change_task_option(
+        self, task_id: int | str, new_option: SupportedTerraformTask
+    ):
         """Change the option of a task."""
         task_index = self._get_task_index(task_id)
         new_tasks = (

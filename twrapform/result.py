@@ -5,13 +5,13 @@ from dataclasses import dataclass, field
 from unittest import result
 
 from .exception import TwrapformPreconditionError, TwrapformTaskError
-from .task import TFCommandOptions
+from .task import SupportedTerraformTask
 
 
 @dataclass(frozen=True)
 class TwrapformTaskResult(ABC):
     task_id: str | int
-    task_option: TFCommandOptions
+    task_option: SupportedTerraformTask
 
     @abstractmethod
     def is_success(self) -> bool: ...
