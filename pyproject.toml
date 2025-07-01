@@ -1,13 +1,18 @@
 [project]
 name = "twrapform"
 version = "0.0.1"
-description = "Add your description here"
-requires-python = ">=3.12"
+description = "Running Terraform commands from Python"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+readme = "README.md"
+keywords = ["terraform", "python", "infrastructure"]
 dependencies = []
+
+
 
 [tool.isort]
 profile = 'black'
-multi_line_output = 3
+multi_line_output = 4
 
 [dependency-groups]
 dev = [
@@ -31,4 +36,5 @@ addopts = [
     "--strict-markers",
     "--strict-config",
     "--verbose",
+    "--disable-warnings"
 ]
