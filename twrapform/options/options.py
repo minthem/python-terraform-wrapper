@@ -280,6 +280,13 @@ class InitTaskOptions(OutputOptions, LockOptions, InputOptions, TFCommandOptions
         metadata={TF_OPTION_METANAME: UNDERSCORE_BOOL_FLAG_OPTION_META},
     )
 
+    # NOTE Exclude because some versions are not supported
+    json: bool | None = field(
+        init=False,
+        default=None,
+        metadata={TF_OPTION_METANAME: UNDERSCORE_BOOL_FLAG_OPTION_META},
+    )
+
     @property
     def command(self) -> tuple[str, ...]:
         return ("init",)
