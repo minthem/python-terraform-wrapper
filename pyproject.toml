@@ -1,9 +1,14 @@
 [project]
 name = "twrapform"
-version = "0.0.0"
+#version = "0.0.0"
 description = "Add your description here"
 requires-python = ">=3.10"
+readme = "README.md"
+license-files = ["LICENSE"]
+dynamic = ["version"]
+urls = { "Repository" = "https://github.com/minthem/twrapform" }
 dependencies = []
+
 
 [tool.isort]
 profile = 'black'
@@ -21,7 +26,7 @@ dev = [
 ]
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [tool.pytest.ini_options]
@@ -32,3 +37,6 @@ addopts = [
     "--strict-config",
     "--verbose",
 ]
+
+[tool.hatch.version]
+source = "vcs"
