@@ -408,7 +408,7 @@ class TestApplyTaskOptions:
         new_opt = opt.convert_option(type_, **override_values)
 
         common_fields = {field.name for field in fields(opt)} & {
-            field.name for field in fields(new_opt)
+            field.name for field in fields(new_opt) if field.init
         }
 
         for field_name in common_fields:
@@ -472,7 +472,7 @@ class TestOutputOptions:
         new_opt = opt.convert_option(type_, **override_values)
 
         common_fields = {field.name for field in fields(opt)} & {
-            field.name for field in fields(new_opt)
+            field.name for field in fields(new_opt) if field.init
         }
 
         for field_name in common_fields:
