@@ -52,7 +52,7 @@ async def test_execute_all_success(project_path):
 
     results = await twrapform.execute()
 
-    assert len(results.task_results) == 4
+    assert results.result_count == 4
 
     try:
         results.raise_on_error()
@@ -131,7 +131,7 @@ async def test_execute_failed_and_resume(project_path):
 
     results = await twrapform.execute()
 
-    assert len(results.task_results) == 3
+    assert results.result_count == 3
 
     with pytest.raises(TwrapformError):
         results.raise_on_error()
