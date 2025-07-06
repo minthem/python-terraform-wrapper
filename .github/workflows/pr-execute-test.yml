@@ -1,0 +1,43 @@
+name: Run Tests on PR
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  exec_test:
+    name: python
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        terraform:
+          - "1.5.7"
+          - "1.12.2"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: "pyproject.toml"
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ matrix.terraform }}
+
+      - name: Install the project
+        run: uv sync --all-extras --dev
+
+      - name: check tf
+        run: |
+          which terraform || :
+          terraform --version
+
+      - name: Run tests
+        run: uv run pytest

@@ -1,6 +1,7 @@
 import json
 import shutil
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import pytest
 
@@ -18,14 +19,11 @@ from twrapform.result import TwrapformCommandTaskResult
 
 @pytest.fixture
 def project_path():
-    path = Path(__file__).parent / "terraform" / "simple_input_output"
-    shutil.rmtree(path / ".terraform", ignore_errors=True)
-    shutil.rmtree(path / "terraform.tfstate.d", ignore_errors=True)
+    base_path = Path(__file__).parent / "terraform" / "simple_input_output"
 
-    yield Path(__file__).parent / "terraform" / "simple_input_output"
-
-    shutil.rmtree(path / ".terraform", ignore_errors=True)
-    shutil.rmtree(path / "terraform.tfstate.d", ignore_errors=True)
+    with TemporaryDirectory() as tmpdir:
+        shutil.copytree(base_path, tmpdir, dirs_exist_ok=True)
+        yield tmpdir
 
 
 @pytest.mark.asyncio
@@ -81,7 +79,7 @@ async def test_execute_all_success_output_json(project_path):
     )
     twrapform = (
         Workflow(work_dir=project_path)
-        .add_task(task_id="init_1", task_option=InitTaskOptions(json=True))
+        .add_task(task_id="init_1", task_option=InitTaskOptions())
         .add_task(task_id="plan_1", task_option=plan_option)
         .add_task(
             task_id="apply_1", task_option=plan_option.convert_option(ApplyTaskOptions)
