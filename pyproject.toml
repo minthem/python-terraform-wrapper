@@ -1,11 +1,10 @@
 [project]
 name = "twrapform"
-#version = "0.0.0"
-description = "Add your description here"
+version = "0.0.0"
+description = "Terraform task management wrapper for Python"
 requires-python = ">=3.10"
 readme = "README.md"
 license-files = ["LICENSE"]
-dynamic = ["version"]
 urls = { "Repository" = "https://github.com/minthem/twrapform" }
 dependencies = []
 
@@ -26,7 +25,7 @@ dev = [
 ]
 
 [build-system]
-requires = ["hatchling", "hatch-vcs"]
+requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.pytest.ini_options]
@@ -37,6 +36,3 @@ addopts = [
     "--strict-config",
     "--verbose",
 ]
-
-[tool.hatch.version]
-source = "vcs"
