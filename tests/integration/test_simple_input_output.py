@@ -14,7 +14,7 @@ from twrapform.options import (
     PlanTaskOptions,
     WorkspaceSelectTaskOptions,
 )
-from twrapform.result import TwrapformCommandTaskResult
+from twrapform.result import CommandTaskResult
 
 
 @pytest.fixture
@@ -100,7 +100,7 @@ async def test_execute_all_success_output_json(project_path):
 
     try:
         for result in results.task_results:
-            assert isinstance(result, TwrapformCommandTaskResult)
+            assert isinstance(result, CommandTaskResult)
             for line in result.stdout.split("\n"):
                 json.dumps(line)
     except Exception as e:

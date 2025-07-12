@@ -12,7 +12,7 @@ from twrapform.options import (
     OutputTaskOptions,
     PlanTaskOptions,
 )
-from twrapform.result import PreExecutionFailure, TwrapformCommandTaskResult
+from twrapform.result import CommandTaskResult, PreExecutionFailure
 
 
 class TestTwrapformConstructor:
@@ -271,7 +271,7 @@ class TestTwrapformExecute:
             for task, result in zip(twrapform.tasks, results.task_results):
                 assert task.task_id == result.task_id
                 assert task.option == result.task_option
-                assert isinstance(result, TwrapformCommandTaskResult) is True
+                assert isinstance(result, CommandTaskResult) is True
                 assert result.is_success() is True
                 assert result.summary() == f"[{task.task_id}] Completed with code 0"
                 try:
@@ -310,7 +310,7 @@ class TestTwrapformExecute:
             for task, result in zip(twrapform.tasks, results.task_results):
                 assert task.task_id == result.task_id
                 assert task.option == result.task_option
-                assert isinstance(result, TwrapformCommandTaskResult) is True
+                assert isinstance(result, CommandTaskResult) is True
                 assert result.is_success() is True
                 assert result.summary() == f"[{task.task_id}] Completed with code 0"
                 try:
@@ -354,7 +354,7 @@ class TestTwrapformExecute:
             for task, result in zip(twrapform.tasks[:2], results.task_results):
                 assert task.task_id == result.task_id
                 assert task.option == result.task_option
-                assert isinstance(result, TwrapformCommandTaskResult) is True
+                assert isinstance(result, CommandTaskResult) is True
                 assert result.is_success() is True
                 assert result.summary() == f"[{task.task_id}] Completed with code 0"
                 try:
@@ -367,7 +367,7 @@ class TestTwrapformExecute:
 
             assert last_task.task_id == fail_task.task_id
             assert last_task.option == fail_task.task_option
-            assert isinstance(fail_task, TwrapformCommandTaskResult) is True
+            assert isinstance(fail_task, CommandTaskResult) is True
             assert fail_task.is_success() is False
             assert fail_task.summary() == f"[{fail_task.task_id}] Completed with code 1"
 
@@ -409,7 +409,7 @@ class TestTwrapformExecute:
             for task, result in zip(twrapform.tasks[:1], results.task_results):
                 assert task.task_id == result.task_id
                 assert task.option == result.task_option
-                assert isinstance(result, TwrapformCommandTaskResult) is True
+                assert isinstance(result, CommandTaskResult) is True
                 assert result.is_success() is True
                 assert result.summary() == f"[{task.task_id}] Completed with code 0"
                 try:
@@ -464,7 +464,7 @@ class TestTwrapformExecute:
             for task, result in zip(twrapform.tasks[2:], results.task_results):
                 assert task.task_id == result.task_id
                 assert task.option == result.task_option
-                assert isinstance(result, TwrapformCommandTaskResult) is True
+                assert isinstance(result, CommandTaskResult) is True
                 assert result.is_success() is True
                 assert result.summary() == f"[{task.task_id}] Completed with code 0"
                 try:

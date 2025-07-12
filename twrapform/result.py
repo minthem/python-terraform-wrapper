@@ -9,7 +9,7 @@ from .options import SupportedTerraformTask
 
 
 @dataclass(frozen=True)
-class TwrapformTaskResult(ABC):
+class TaskResult(ABC):
     task_id: TaskID
     task_option: SupportedTerraformTask
 
@@ -24,7 +24,7 @@ class TwrapformTaskResult(ABC):
 
 
 @dataclass(frozen=True)
-class TwrapformCommandTaskResult(TwrapformTaskResult):
+class CommandTaskResult(TaskResult):
     return_code: int
     stdout: str | bytes
     stderr: str | bytes
@@ -46,7 +46,7 @@ class TwrapformCommandTaskResult(TwrapformTaskResult):
 
 
 @dataclass(frozen=True)
-class PreExecutionFailure(TwrapformTaskResult):
+class PreExecutionFailure(TaskResult):
     original_error: Exception
 
     def is_success(self) -> bool:
@@ -65,12 +65,12 @@ class PreExecutionFailure(TwrapformTaskResult):
 
 
 @dataclass(frozen=True)
-class TwrapformResult:
+class WorkflowResult:
     """Twrapform task result object."""
 
-    task_results: tuple[
-        TwrapformCommandTaskResult | TwrapformPreconditionError, ...
-    ] = field(default_factory=tuple)
+    task_results: tuple[CommandTaskResult | TwrapformPreconditionError, ...] = field(
+        default_factory=tuple
+    )
 
     def raise_on_error(self):
         """Raise an exception if any task failed."""
@@ -79,7 +79,7 @@ class TwrapformResult:
 
     def get_result(
         self, task_id: TaskID
-    ) -> TwrapformCommandTaskResult | TwrapformPreconditionError:
+    ) -> CommandTaskResult | TwrapformPreconditionError:
         """Get a task result by its ID."""
         for task_result in self.task_results:
             if task_result.task_id == task_id:
@@ -97,7 +97,7 @@ class TwrapformResult:
         """Return the number of success results."""
         return len([result for result in self.task_results if result.is_success()])
 
-    def get_success_tasks(self) -> tuple[TwrapformCommandTaskResult, ...]:
+    def get_success_tasks(self) -> tuple[CommandTaskResult, ...]:
         """Return all task results."""
         return tuple(
             task_result for task_result in self.task_results if task_result.is_success()

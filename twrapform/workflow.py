@@ -9,7 +9,7 @@ from dataclasses import dataclass, field, replace
 from .common import Task, TaskID, gen_sequential_id
 from .logging import get_logger
 from .options import SupportedTerraformTask
-from .result import PreExecutionFailure, TwrapformCommandTaskResult, TwrapformResult
+from .result import CommandTaskResult, PreExecutionFailure, WorkflowResult
 
 
 @dataclass(frozen=True)
@@ -105,7 +105,7 @@ class Workflow:
         *,
         start_task_id: TaskID | None = None,
         encoding_output: bool | str = False,
-    ) -> TwrapformResult:
+    ) -> WorkflowResult:
         """Run all tasks asynchronously."""
 
         env_vars = os.environ.copy()
@@ -138,7 +138,7 @@ async def _execute_terraform_tasks(
     env_vars: dict[str, str] | None = None,
     output_encoding: str | None = None,
     logger: logging.Logger = get_logger(),
-) -> TwrapformResult:
+) -> WorkflowResult:
     task_results = []
 
     if env_vars is None:
@@ -169,7 +169,7 @@ async def _execute_terraform_tasks(
                     logger.warning("[%s] Failed encoding output: %s", task.task_id, e)
 
             task_results.append(
-                TwrapformCommandTaskResult(
+                CommandTaskResult(
                     task_id=task.task_id,
                     task_option=task.option,
                     return_code=return_code,
@@ -189,4 +189,4 @@ async def _execute_terraform_tasks(
             task_results.append(error)
             break
 
-    return TwrapformResult(task_results=tuple(task_results))
+    return WorkflowResult(task_results=tuple(task_results))
