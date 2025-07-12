@@ -6,6 +6,7 @@ from typing import NamedTuple
 from .options import SupportedTerraformTask
 
 TaskID = int | str
+WorkflowID = int | str
 
 
 class Task(NamedTuple):
@@ -14,5 +15,9 @@ class Task(NamedTuple):
 
 
 def gen_sequential_id() -> TaskID:
-    result = str(int(time.time()))
+    result = hex(int(time.time() * (10**8)))[2:]
     return result
+
+
+def gen_workflow_id() -> WorkflowID:
+    return "workflow_" + gen_sequential_id()

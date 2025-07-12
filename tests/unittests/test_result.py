@@ -68,6 +68,7 @@ def test_twrapform_result():
     )
     twrap_result = WorkflowResult(
         task_results=tuple([command_result1, command_result2, pre_failure]),
+        workflow_id="w1",
     )
 
     assert twrap_result.result_count == 3
@@ -102,7 +103,9 @@ def test_raise_on_error_multiple_results():
         stdout="Some output",
         stderr="Some error",
     )
-    twrap_result = WorkflowResult(task_results=(success_result, failure_result))
+    twrap_result = WorkflowResult(
+        task_results=(success_result, failure_result), workflow_id="w1"
+    )
 
     assert twrap_result.result_count == 2
     assert twrap_result.success_count == 1

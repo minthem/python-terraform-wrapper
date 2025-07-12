@@ -5,8 +5,15 @@ import locale
 import logging
 import os
 from dataclasses import dataclass, field, replace
+from typing import NamedTuple
 
-from .common import Task, TaskID, gen_sequential_id
+from .common import (
+    Task,
+    TaskID,
+    WorkflowID,
+    gen_sequential_id,
+    gen_workflow_id,
+)
 from .logging import get_logger
 from .options import SupportedTerraformTask
 from .result import CommandTaskResult, PreExecutionFailure, WorkflowResult
@@ -19,6 +26,7 @@ class Workflow:
     work_dir: os.PathLike[str] | str
     terraform_path: os.PathLike[str] | str = "terraform"
     tasks: tuple[Task, ...] = field(default_factory=tuple)
+    workflow_id: WorkflowID = field(default_factory=gen_workflow_id)
 
     def __post_init__(self):
         task_ids = set(self.task_ids)
@@ -84,7 +92,7 @@ class Workflow:
         task_id_index = self._get_task_index(task_id)
 
         new_tasks = tuple(
-            task for i, task in enumerate(self.tasks) if i != task_id_index
+            [*self.tasks[:task_id_index], *self.tasks[task_id_index + 1 :]]
         )
 
         return replace(self, tasks=new_tasks)
@@ -122,13 +130,15 @@ class Workflow:
         else:
             encoding = encoding_output
 
-        return await _execute_terraform_tasks(
+        results = await _execute_terraform_tasks(
             work_dir=self.work_dir,
             terraform_path=self.terraform_path,
             tasks=self.tasks[start_index:],
             env_vars=env_vars,
             output_encoding=encoding,
         )
+
+        return WorkflowResult(workflow_id=self.workflow_id, task_results=results)
 
 
 async def _execute_terraform_tasks(
@@ -138,7 +148,7 @@ async def _execute_terraform_tasks(
     env_vars: dict[str, str] | None = None,
     output_encoding: str | None = None,
     logger: logging.Logger = get_logger(),
-) -> WorkflowResult:
+) -> tuple[CommandTaskResult | PreExecutionFailure, ...]:
     task_results = []
 
     if env_vars is None:
@@ -189,4 +199,4 @@ async def _execute_terraform_tasks(
             task_results.append(error)
             break
 
-    return WorkflowResult(task_results=tuple(task_results))
+    return tuple(task_results)

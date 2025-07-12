@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
-from .common import TaskID
+from .common import TaskID, WorkflowID
 from .exception import TwrapformPreconditionError, TwrapformTaskError
 from .options import SupportedTerraformTask
 
@@ -68,6 +68,7 @@ class PreExecutionFailure(TaskResult):
 class WorkflowResult:
     """Twrapform task result object."""
 
+    workflow_id: WorkflowID
     task_results: tuple[CommandTaskResult | TwrapformPreconditionError, ...] = field(
         default_factory=tuple
     )
