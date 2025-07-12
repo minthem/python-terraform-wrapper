@@ -4,19 +4,28 @@ import asyncio
 import locale
 import logging
 import os
+import shutil
 from dataclasses import dataclass, field, replace
 from typing import NamedTuple
 
 from .common import (
+    GroupID,
     Task,
     TaskID,
     WorkflowID,
+    gen_group_id,
     gen_sequential_id,
     gen_workflow_id,
 )
 from .logging import get_logger
 from .options import SupportedTerraformTask
-from .result import CommandTaskResult, PreExecutionFailure, WorkflowResult
+from .result import (
+    CommandTaskResult,
+    PreExecutionFailure,
+    WorkflowGroupResult,
+    WorkflowManagerResult,
+    WorkflowResult,
+)
 
 
 @dataclass(frozen=True)
@@ -117,18 +126,13 @@ class Workflow:
         """Run all tasks asynchronously."""
 
         env_vars = os.environ.copy()
-        encoding: str | None = None
 
         if start_task_id is not None:
             start_index = self._get_task_index(start_task_id)
         else:
             start_index = 0
 
-        if isinstance(encoding_output, bool):
-            if encoding_output:
-                encoding = locale.getpreferredencoding()
-        else:
-            encoding = encoding_output
+        encoding = _get_encoding_output(encoding_output)
 
         results = await _execute_terraform_tasks(
             work_dir=self.work_dir,
@@ -139,6 +143,118 @@ class Workflow:
         )
 
         return WorkflowResult(workflow_id=self.workflow_id, task_results=results)
+
+
+class WorkflowGroup(NamedTuple):
+    group_id: GroupID
+    workflows: tuple[Workflow, ...]
+
+
+@dataclass(frozen=True)
+class WorkflowManager:
+    """Twrapform configuration object."""
+
+    groups: tuple[WorkflowGroup, ...] = field(default_factory=tuple)
+
+    def __post_init__(self):
+        group_ids = set(self.group_ids)
+
+        if None in group_ids:
+            raise ValueError("Group ID must be specified")
+
+        if len(group_ids) != len(self.group_ids):
+            raise ValueError("Group ID must be unique")
+
+    @property
+    def group_ids(self) -> tuple[GroupID, ...]:
+        return tuple(workflow.group_id for workflow in self.groups)
+
+    def add_workflows(
+        self,
+        *workflows: Workflow,
+        group_id: GroupID | None = None,
+    ) -> WorkflowManager:
+        """Add workflows to the Twrapform object."""
+        group_ids = self.group_ids
+        if group_id is None:
+            group_id = gen_group_id()
+        else:
+            if group_id in group_ids:
+                raise ValueError(f"Group ID {group_id} already exists")
+
+        if isinstance(workflows, Workflow):
+            workflows = (workflows,)
+
+        workflow_group = WorkflowGroup(group_id, workflows)
+
+        return replace(
+            self,
+            groups=self.groups + (workflow_group,),
+        )
+
+    def exist_group(self, group_id: GroupID) -> bool:
+        """Check if a workflow exists in the Twrapform object."""
+
+        group_ids = self.group_ids
+        return group_id in group_ids
+
+    def _get_group_index(self, group_id: GroupID) -> int:
+        for index, group in enumerate(self.groups):
+            if group.group_id == group_id:
+                return index
+        else:
+            raise ValueError(f"Group ID {group_id} does not exist")
+
+    def remove_group(self, group_id: GroupID) -> WorkflowManager:
+        """Remove a group from the Twrapform object."""
+        if not self.exist_group(group_id):
+            raise ValueError(f"Group ID {group_id} does not exist")
+
+        group_id_index = self._get_group_index(group_id)
+
+        new_groups = tuple(
+            [*self.groups[:group_id_index], *self.groups[group_id_index + 1 :]]
+        )
+
+        return replace(self, groups=new_groups)
+
+    def clear_groups(self) -> WorkflowManager:
+        """Remove all groups from the Twrapform object."""
+        return replace(self, groups=tuple())
+
+    async def execute(
+        self,
+        *,
+        start_group_id: GroupID | None = None,
+        encoding_output: bool | str = False,
+        stop_on_error: bool = True,
+    ) -> WorkflowManagerResult:
+        """Run all workflows asynchronously."""
+        results: list[WorkflowGroupResult] = []
+
+        if start_group_id is not None:
+            start_index = self._get_group_index(start_group_id)
+        else:
+            start_index = 0
+
+        encoding = _get_encoding_output(encoding_output)
+
+        for group in self.groups[start_index:]:
+            group_jobs = [
+                workflow.execute(encoding_output=encoding)
+                for workflow in group.workflows
+            ]
+
+            task_results = await asyncio.gather(*group_jobs)
+            group_results = WorkflowGroupResult(
+                group_id=group.group_id, workflow_results=tuple(task_results)
+            )
+            results.append(group_results)
+
+            if stop_on_error and not group_results.is_all_success():
+                break
+
+        return WorkflowManagerResult(group_results=tuple(results))
 
 
 async def _execute_terraform_tasks(
@@ -156,6 +272,10 @@ async def _execute_terraform_tasks(
 
     for task in tasks:
         try:
+            if shutil.which(terraform_path) is None:
+                raise FileNotFoundError(
+                    f"Terraform executable not found: {terraform_path}"
+                )
             cmd_args = (
                 f"-chdir={work_dir}",
                 *task.option.convert_command_args(),
@@ -200,3 +320,13 @@ async def _execute_terraform_tasks(
             break
 
     return tuple(task_results)
+
+
+def _get_encoding_output(encoding_output: bool | str | None) -> str | None:
+    if isinstance(encoding_output, bool):
+        if encoding_output:
+            return locale.getpreferredencoding()
+
+        return None
+
+    return encoding_output

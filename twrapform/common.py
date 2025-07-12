@@ -7,6 +7,7 @@ from .options import SupportedTerraformTask
 
 TaskID = int | str
 WorkflowID = int | str
+GroupID = int | str
 
 
 class Task(NamedTuple):
@@ -21,3 +22,7 @@ def gen_sequential_id() -> TaskID:
 
 def gen_workflow_id() -> WorkflowID:
     return "workflow_" + gen_sequential_id()
+
+
+def gen_group_id() -> GroupID:
+    return "group_" + gen_sequential_id()

@@ -3,8 +3,14 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
-from .common import TaskID, WorkflowID
-from .exception import TwrapformPreconditionError, TwrapformTaskError
+from .common import GroupID, TaskID, WorkflowID
+from .exception import (
+    TwrapformError,
+    TwrapformGroupExecutionError,
+    TwrapformPreconditionError,
+    TwrapformTaskError,
+    WorkflowManagerExecutionError,
+)
 from .options import SupportedTerraformTask
 
 
@@ -103,3 +109,73 @@ class WorkflowResult:
         return tuple(
             task_result for task_result in self.task_results if task_result.is_success()
         )
+
+    def is_all_success(self) -> bool:
+        """Return True if all task results are success."""
+        return self.result_count == self.success_count
+
+
+@dataclass(frozen=True)
+class WorkflowGroupResult:
+    group_id: GroupID
+    workflow_results: tuple[WorkflowResult, ...]
+
+    def raise_on_error(self):
+        errors: list[TwrapformError] = []
+
+        for wf_result in self.workflow_results:
+            for task_result in wf_result.task_results:
+                try:
+                    task_result.raise_on_error()
+                except TwrapformError as e:
+                    errors.append(e)
+
+        if 0 < len(errors):
+            raise TwrapformGroupExecutionError(
+                group_id=self.group_id, errors=tuple(errors)
+            )
+
+    @property
+    def success_workflow_count(self) -> int:
+        return sum(1 for wf in self.workflow_results if wf.is_all_success())
+
+    def is_all_success(self) -> bool:
+        return self.success_workflow_count == len(self.workflow_results)
+
+    def get_workflow_result(self, workflow_id: WorkflowID) -> WorkflowResult:
+        for wf in self.workflow_results:
+            if wf.workflow_id == workflow_id:
+                return wf
+        else:
+            raise ValueError(f"No workflow result for workflow_id {workflow_id}")
+
+
+@dataclass(frozen=True)
+class WorkflowManagerResult:
+    group_results: tuple[WorkflowGroupResult, ...]
+
+    def raise_on_error(self):
+        errors: list[TwrapformGroupExecutionError] = []
+
+        for group_result in self.group_results:
+            try:
+                group_result.raise_on_error()
+            except TwrapformGroupExecutionError as e:
+                errors.append(e)
+
+        if 0 < len(errors):
+            raise WorkflowManagerExecutionError(tuple(errors))
+
+    @property
+    def success_count(self) -> int:
+        return sum(1 for gr in self.group_results if gr.is_all_success())
+
+    def is_all_success(self) -> bool:
+        return self.success_count == len(self.group_results)
+
+    def get_group_result(self, group_id: GroupID) -> WorkflowGroupResult:
+        for gr in self.group_results:
+            if gr.group_id == group_id:
+                return gr
+        else:
+            raise ValueError(f"No group result for group_id {group_id}")
