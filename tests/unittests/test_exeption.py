@@ -8,8 +8,7 @@ from twrapform.exception import (
 
 
 def test_twrapform_error():
-    error = TwrapformError(task_id="123", message="Test error")
-    assert error.task_id == "123"
+    error = TwrapformError(message="Test error")
     assert error.message == "Test error"
 
 

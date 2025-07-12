@@ -6,7 +6,11 @@ from tempfile import TemporaryDirectory
 import pytest
 
 from twrapform import Workflow
-from twrapform.exception import TwrapformError
+from twrapform.exception import (
+    TwrapformError,
+    TwrapformPreconditionError,
+    TwrapformTaskError,
+)
 from twrapform.options import (
     ApplyTaskOptions,
     InitTaskOptions,
@@ -14,7 +18,7 @@ from twrapform.options import (
     PlanTaskOptions,
     WorkspaceSelectTaskOptions,
 )
-from twrapform.result import TwrapformCommandTaskResult
+from twrapform.result import CommandTaskResult
 
 
 @pytest.fixture
@@ -56,7 +60,7 @@ async def test_execute_all_success(project_path):
 
     try:
         results.raise_on_error()
-    except TwrapformError as e:
+    except (TwrapformTaskError, TwrapformPreconditionError) as e:
         pytest.fail(
             f"pytest failed: {e.message}\n {results.get_result(e.task_id).task_option.convert_command_args()}"
         )
@@ -100,7 +104,7 @@ async def test_execute_all_success_output_json(project_path):
 
     try:
         for result in results.task_results:
-            assert isinstance(result, TwrapformCommandTaskResult)
+            assert isinstance(result, CommandTaskResult)
             for line in result.stdout.split("\n"):
                 json.dumps(line)
     except Exception as e:
