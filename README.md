@@ -1,29 +1,29 @@
 # twrapform
 
-A Python library for running Terraform commands from Python with async support.
+A Python library for running Terraform commands from Python with asynchronous workflow management.
 
-## Features
+## ✨ Features
 
-- Execute Terraform commands from Python code
-- Asynchronous execution support
-- Task management with unique IDs
-- Customizable task options
-- Error handling for Terraform operations
+- Run Terraform commands natively from Python
+- Asynchronous execution using `asyncio`
+- Immutable task definitions with unique IDs
+- Grouped workflow orchestration
+- Granular error handling with structured results
 
-## Requirements
+## 📦 Requirements
 
-- Python 3.10 or higher
-- Terraform installed on your system
+- Python 3.10+
+- Terraform installed and available in your system's `PATH`
 
-## Installation
+## 🔧 Installation
 
-Using pip:
-```shell
+```bash
 pip install twrapform
 ```
 
-## Usage Example
+## 🚀 Usage Examples
 
+### Run a single workflow with chained Terraform tasks
 ```python
 import asyncio
 
@@ -63,10 +63,37 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
 ```
 
-## Supported Commands
+### Manage multiple workflows in a group using `WorkflowManager`
+```python
+from twrapform import Workflow, WorkflowManager
+from twrapform.options import InitTaskOptions
+import asyncio
+
+async def main():
+    # Define workflows with Terraform initialization tasks
+    workflow1 = Workflow(work_dir="infra/project1").add_task(InitTaskOptions())
+    workflow2 = Workflow(work_dir="infra/project2").add_task(InitTaskOptions())
+    
+    # Add workflows into a group and initialize the manager
+    manager = WorkflowManager().add_workflows(workflow1, workflow2, group_id="init-group")
+    
+    # Run the grouped workflows asynchronously
+    result = await manager.execute()
+    
+    # Display summaries for successfully completed tasks
+    for group_result in result.group_results:
+        for wf_result in group_result.workflow_results:
+            for task in wf_result.get_success_tasks():
+                print(task.summary())
+
+                
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+## ⚙️ Supported Terraform Commands
 twrapform currently supports the following Terraform commands:
 * `terraform init`
 * `terraform plan`

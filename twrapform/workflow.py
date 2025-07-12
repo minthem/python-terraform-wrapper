@@ -63,7 +63,19 @@ class Workflow:
     def add_task(
         self, task_option: SupportedTerraformTask, task_id: TaskID | None = None
     ) -> Workflow:
-        """Add a task to the Twrapform object."""
+        """Add a task to the Twrapform object with the specified options and ID.
+
+        Args:
+            task_option: The Terraform task configuration to be added.
+            task_id: Optional unique identifier for the task. If not provided,
+                    an ID will be generated using the task command and a sequential number.
+
+        Returns:
+            Workflow: A new Workflow instance with the added task.
+
+        Raises:
+            ValueError: If the provided task_id already exists in the workflow.
+        """
 
         task_ids = self.task_ids
         if task_id is None:
@@ -176,7 +188,21 @@ class WorkflowManager:
         group_id: GroupID | None = None,
         max_concurrency: int | None = None,
     ) -> WorkflowManager:
-        """Add workflows to the Twrapform object."""
+        """Add workflows to the Twrapform object and create a new workflow group.
+
+        Args:
+            *workflows: Variable number of Workflow objects to add to the group.
+            group_id: Optional unique identifier for the group. If not provided, a new ID will be generated.
+            max_concurrency: Maximum number of workflows that can run concurrently in this group.
+                           If not provided, defaults to the number of workflows in the group.
+                           Must be greater than 0 if specified.
+
+        Returns:
+            WorkflowManager: A new WorkflowManager instance with the added workflow group.
+
+        Raises:
+            ValueError: If group_id already exists or max_concurrency is less than or equal to 0.
+        """
         group_ids = self.group_ids
         if group_id is None:
             group_id = gen_group_id()
@@ -237,7 +263,20 @@ class WorkflowManager:
         encoding_output: bool | str = False,
         stop_on_error: bool = True,
     ) -> WorkflowManagerResult:
-        """Run all workflows asynchronously."""
+        """Run all workflows asynchronously in each group with concurrency control.
+
+        Args:
+            start_group_id: Optional group ID to start execution from. If provided,
+                          only groups from this ID onwards will be executed.
+            encoding_output: Controls output encoding for command results. If True, uses system
+                          preferred encoding. If string, uses specified encoding. If False,
+                          leaves output as bytes.
+            stop_on_error: If True, stops execution when any workflow in a group fails.
+                         If False, continues to next group regardless of failures.
+
+        Returns:
+            WorkflowManagerResult: Object containing results of all executed workflow groups.
+        """
         results: list[WorkflowGroupResult] = []
 
         if start_group_id is not None:
