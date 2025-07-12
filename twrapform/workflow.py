@@ -6,10 +6,10 @@ import logging
 import os
 from dataclasses import dataclass, field, replace
 
+from .common import Task, TaskID, gen_sequential_id
 from .logging import get_logger
 from .options import SupportedTerraformTask
 from .result import PreExecutionFailure, TwrapformCommandTaskResult, TwrapformResult
-from .task import Task, TaskID, gen_sequential_id
 
 
 @dataclass(frozen=True)

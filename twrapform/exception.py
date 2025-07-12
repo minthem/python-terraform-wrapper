@@ -1,4 +1,4 @@
-from .task import TaskID
+from .common import TaskID
 
 
 class TwrapformError(Exception):
