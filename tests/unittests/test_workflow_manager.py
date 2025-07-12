@@ -4,6 +4,7 @@ import pytest
 
 from twrapform import Workflow, WorkflowManager
 from twrapform.options import InitTaskOptions
+from twrapform.workflow import WorkflowGroup
 
 
 @pytest.fixture
@@ -72,6 +73,31 @@ class TestWorkflowManager:
         manager = workflow_manager_2.clear_groups()
         assert manager.group_ids == ()
         assert len(manager.groups) == 0
+
+    def test_duplicate_group_id_post_init(self, workflow_manager_1):
+        g1 = WorkflowGroup(
+            group_id="group1",
+            workflows=(),
+            max_concurrency=2,
+        )
+        with pytest.raises(ValueError, match="Group ID must be unique"):
+            WorkflowManager(groups=(g1, g1))
+
+    def test_group_id_not_specific(self, workflow_manager_1):
+        g1 = WorkflowGroup(
+            group_id=None,
+            workflows=(),
+            max_concurrency=2,
+        )
+        with pytest.raises(ValueError, match="Group ID must be specified"):
+            WorkflowManager(groups=(g1,))
+
+    def test_add_workflows_less_than_max_concurrency(self, workflow_manager_1):
+        with pytest.raises(ValueError, match="max_concurrency must be greater than 0"):
+            manager = workflow_manager_1.add_workflows(
+                Workflow(work_dir="/tmp4").add_task(InitTaskOptions()),
+                max_concurrency=0,
+            )
 
 
 class TestWorkflowManagerExecute:

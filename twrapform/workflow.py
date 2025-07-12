@@ -148,6 +148,7 @@ class Workflow:
 class WorkflowGroup(NamedTuple):
     group_id: GroupID
     workflows: tuple[Workflow, ...]
+    max_concurrency: int
 
 
 @dataclass(frozen=True)
@@ -173,6 +174,7 @@ class WorkflowManager:
         self,
         *workflows: Workflow,
         group_id: GroupID | None = None,
+        max_concurrency: int | None = None,
     ) -> WorkflowManager:
         """Add workflows to the Twrapform object."""
         group_ids = self.group_ids
@@ -185,7 +187,13 @@ class WorkflowManager:
         if isinstance(workflows, Workflow):
             workflows = (workflows,)
 
-        workflow_group = WorkflowGroup(group_id, workflows)
+        if max_concurrency is not None and max_concurrency <= 0:
+            raise ValueError("max_concurrency must be greater than 0")
+
+        if max_concurrency is None:
+            max_concurrency = len(workflows)
+
+        workflow_group = WorkflowGroup(group_id, workflows, max_concurrency)
 
         return replace(
             self,
@@ -239,9 +247,13 @@ class WorkflowManager:
 
         encoding = _get_encoding_output(encoding_output)
 
+        async def _execute_task_sem(workflow: Workflow, sem: asyncio.Semaphore):
+            async with sem:
+                return await workflow.execute(encoding_output=encoding)
+
         for group in self.groups[start_index:]:
             group_jobs = [
-                workflow.execute(encoding_output=encoding)
+                _execute_task_sem(workflow, asyncio.Semaphore(group.max_concurrency))
                 for workflow in group.workflows
             ]
 
