@@ -6,7 +6,9 @@ requires-python = ">=3.10"
 readme = "README.md"
 license-files = ["LICENSE"]
 urls = { "Repository" = "https://github.com/minthem/twrapform" }
-dependencies = []
+dependencies = [
+    "python-hcl2",
+]
 
 
 [tool.isort]
