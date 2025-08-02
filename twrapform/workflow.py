@@ -4,10 +4,15 @@ import asyncio
 import locale
 import logging
 import os
+import platform
 import shutil
 from dataclasses import dataclass, field, replace
+from pathlib import Path
 from typing import NamedTuple
 
+import hcl2
+
+from ._lock import AsyncResourceLockManager
 from .common import (
     GroupID,
     Task,
@@ -18,7 +23,7 @@ from .common import (
     gen_workflow_id,
 )
 from .logging import get_logger
-from .options import SupportedTerraformTask
+from .options import InitTaskOptions, SupportedTerraformTask
 from .result import (
     CommandTaskResult,
     PreExecutionFailure,
@@ -26,6 +31,36 @@ from .result import (
     WorkflowManagerResult,
     WorkflowResult,
 )
+
+
+def _get_terraform_provider_cache_dir(env) -> str | None:
+    if "TF_PLUGIN_CACHE_DIR" in env:
+        return env["TF_PLUGIN_CACHE_DIR"]
+
+    if "TF_CLI_CONFIG_FILE" in env:
+        conf_path = Path(env["TF_CLI_CONFIG_FILE"])
+    else:
+        os_name = platform.system()
+
+        if os_name == "Windows" and "APPDATA" in env:
+            conf_path = Path(env["APPDATA"]) / "terraform.rc"
+        else:
+            conf_path = Path.home() / ".terraformrc"
+
+    if not conf_path.exists():
+        return None
+
+    with conf_path.open(mode="r") as f:
+        terraform_rc = hcl2.load(f)
+
+        if "plugin_cache_dir" in terraform_rc:
+            return terraform_rc["plugin_cache_dir"]
+
+    return None
+
+
+_lock_manager_instance = AsyncResourceLockManager()
+_provider_cache_dir = _get_terraform_provider_cache_dir(os.environ)
 
 
 @dataclass(frozen=True)
@@ -331,14 +366,26 @@ async def _execute_terraform_tasks(
                 f"-chdir={work_dir}",
                 *task.option.convert_command_args(),
             )
-            proc = await asyncio.create_subprocess_exec(
-                terraform_path,
-                *cmd_args,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                env=env_vars,
-            )
 
+            if isinstance(task.option, InitTaskOptions):
+                resource_id = str(
+                    env_vars.get("TF_PLUGIN_CACHE_DIR")
+                    or _provider_cache_dir
+                    or work_dir
+                )
+            else:
+                resource_id = str(work_dir)
+
+            async with _lock_manager_instance.get_lock(resource_id):
+                proc = await asyncio.create_subprocess_exec(
+                    terraform_path,
+                    *cmd_args,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    env=env_vars,
+                )
+
+            del resource_id
             stdout, stderr = await proc.communicate()
             return_code = await proc.wait()
 
