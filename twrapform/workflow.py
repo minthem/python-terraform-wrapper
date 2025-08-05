@@ -376,7 +376,7 @@ async def _execute_terraform_tasks(
             else:
                 resource_id = str(work_dir)
 
-            async with _lock_manager_instance.get_lock(resource_id):
+            async with _lock_manager_instance.context(resource_id):
                 proc = await asyncio.create_subprocess_exec(
                     terraform_path,
                     *cmd_args,
