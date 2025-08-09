@@ -35,6 +35,22 @@ from .result import (
 
 
 def _get_terraform_provider_cache_dir(env) -> str | None:
+    """Resolve Terraform provider plugin cache directory.
+
+    Resolution order:
+      1) TF_PLUGIN_CACHE_DIR in the provided env
+      2) plugin_cache_dir in the Terraform CLI config (rc) file
+         - Config file path is taken from TF_CLI_CONFIG_FILE if set,
+           otherwise resolved by platform conventions:
+             - Windows: %APPDATA%/terraform.rc
+             - Others: ~/.terraformrc
+
+    Args:
+        env: Mapping of environment variables to inspect.
+
+    Returns:
+        The resolved directory path as a string, or None if it cannot be determined.
+    """
     if "TF_PLUGIN_CACHE_DIR" in env:
         return env["TF_PLUGIN_CACHE_DIR"]
 
@@ -85,7 +101,11 @@ class Task(NamedTuple):
 
 @dataclass(frozen=True)
 class Workflow:
-    """Twrapform configuration object."""
+    """Twrapform configuration object.
+
+    A Workflow encapsulates a working directory, a Terraform executable path,
+    and an ordered list of tasks to be executed in sequence.
+    """
 
     work_dir: os.PathLike[str] | str
     terraform_path: os.PathLike[str] | str = "terraform"
@@ -93,6 +113,15 @@ class Workflow:
     workflow_id: WorkflowID = field(default_factory=gen_workflow_id)
 
     def __post_init__(self):
+        """Validate task identifiers after initialization.
+
+        Ensures that:
+          - All tasks have a non-None task_id
+          - task_ids are unique within this workflow
+
+        Raises:
+            ValueError: If a task_id is missing or duplicated.
+        """
         task_ids = set(self.task_ids)
 
         if None in task_ids:
@@ -103,12 +132,32 @@ class Workflow:
 
     @property
     def task_ids(self) -> tuple[TaskID, ...]:
+        """Tuple of task IDs in their execution order."""
         return tuple(task.task_id for task in self.tasks)
 
     def exist_task(self, task_id: TaskID) -> bool:
+        """Check whether a task with the given ID exists.
+
+        Args:
+            task_id: The task identifier to search for.
+
+        Returns:
+            True if the task exists, False otherwise.
+        """
         return task_id in self.task_ids
 
     def get_task(self, task_id: TaskID) -> Task:
+        """Retrieve the Task object by its ID.
+
+        Args:
+            task_id: The identifier of the desired task.
+
+        Returns:
+            The matching Task.
+
+        Raises:
+            ValueError: If the task_id does not exist in this workflow.
+        """
         for task in self.tasks:
             if task.task_id == task_id:
                 return task
@@ -123,18 +172,21 @@ class Workflow:
         pre_hooks: Sequence[PreHook] | None = None,
         post_hooks: Sequence[PostHook] | None = None,
     ) -> Workflow:
-        """Add a task to the Twrapform object with the specified options and ID.
+        """Add a task to this workflow and return a new Workflow instance.
+
+        If task_id is not provided, it will be generated from the command and a sequential ID.
 
         Args:
-            task_option: The Terraform task configuration to be added.
-            task_id: Optional unique identifier for the task. If not provided,
-                    an ID will be generated using the task command and a sequential number.
+            task_option: Terraform task configuration to add.
+            task_id: Optional unique task identifier. If provided, must be unique within the workflow.
+            pre_hooks: Optional sequence of pre-execution hooks for this task.
+            post_hooks: Optional sequence of post-execution hooks for this task.
 
         Returns:
-            Workflow: A new Workflow instance with the added task.
+            A new Workflow with the added task.
 
         Raises:
-            ValueError: If the provided task_id already exists in the workflow.
+            ValueError: If the provided task_id already exists.
         """
 
         task_ids = self.task_ids
@@ -200,8 +252,17 @@ class Workflow:
         )
 
     def remove_task(self, task_id: TaskID) -> Workflow:
-        """Remove a task from the Twrapform object."""
+        """Remove a task from this workflow.
 
+        Args:
+            task_id: The ID of the task to remove.
+
+        Returns:
+            A new Workflow without the specified task.
+
+        Raises:
+            ValueError: If the task_id does not exist.
+        """
         if not self.exist_task(task_id):
             raise ValueError(f"Task ID {task_id} does not exist")
 
@@ -214,10 +275,25 @@ class Workflow:
         return replace(self, tasks=new_tasks)
 
     def clear_tasks(self) -> Workflow:
-        """Remove all tasks from the Twrapform object."""
+        """Remove all tasks from this workflow.
+
+        Returns:
+            A new Workflow with an empty task list.
+        """
         return replace(self, tasks=tuple())
 
     def _get_task_index(self, task_id: TaskID) -> int:
+        """Return the index of a task by ID.
+
+        Args:
+            task_id: The ID to locate.
+
+        Returns:
+            The zero-based index of the task.
+
+        Raises:
+            ValueError: If the task_id does not exist.
+        """
         for index, task in enumerate(self.tasks):
             if task.task_id == task_id:
                 return index
@@ -230,8 +306,19 @@ class Workflow:
         start_task_id: TaskID | None = None,
         encoding_output: bool | str = False,
     ) -> WorkflowResult:
-        """Run all tasks asynchronously."""
+        """Run tasks asynchronously in order and return the aggregated result.
 
+        Execution starts from the first task, or from start_task_id if provided.
+        Commands are executed using the configured Terraform path within work_dir.
+
+        Args:
+            start_task_id: Optional ID of the first task to execute.
+            encoding_output: If True, decode command output using the system preferred
+                encoding; if a string, use it as the encoding; if False, keep bytes.
+
+        Returns:
+            WorkflowResult containing results for executed tasks (until the first failure, if any).
+        """
         env_vars = os.environ.copy()
 
         if start_task_id is not None:
@@ -253,6 +340,14 @@ class Workflow:
 
 
 class WorkflowGroup(NamedTuple):
+    """A group of workflows with a concurrency limit.
+
+    Attributes:
+        group_id: Unique identifier of the group.
+        workflows: Workflows to run as part of this group.
+        max_concurrency: Maximum number of workflows to run concurrently within this group.
+    """
+
     group_id: GroupID
     workflows: tuple[Workflow, ...]
     max_concurrency: int
@@ -260,11 +355,25 @@ class WorkflowGroup(NamedTuple):
 
 @dataclass(frozen=True)
 class WorkflowManager:
-    """Twrapform configuration object."""
+    """Twrapform configuration object.
+
+    Manages one or more workflow groups and executes them with optional
+    concurrency constraints. Groups are executed sequentially by default,
+    while workflows inside a group may execute concurrently.
+    """
 
     groups: tuple[WorkflowGroup, ...] = field(default_factory=tuple)
 
     def __post_init__(self):
+        """Validate group identifiers after initialization.
+
+        Ensures:
+          - All groups have a non-None group_id
+          - group_ids are unique
+
+        Raises:
+            ValueError: If a group_id is missing or duplicated.
+        """
         group_ids = set(self.group_ids)
 
         if None in group_ids:
@@ -275,6 +384,7 @@ class WorkflowManager:
 
     @property
     def group_ids(self) -> tuple[GroupID, ...]:
+        """Tuple of group IDs in their insertion order."""
         return tuple(workflow.group_id for workflow in self.groups)
 
     def add_workflows(
@@ -283,20 +393,19 @@ class WorkflowManager:
         group_id: GroupID | None = None,
         max_concurrency: int | None = None,
     ) -> WorkflowManager:
-        """Add workflows to the Twrapform object and create a new workflow group.
+        """Add workflows and create a new workflow group.
 
         Args:
-            *workflows: Variable number of Workflow objects to add to the group.
-            group_id: Optional unique identifier for the group. If not provided, a new ID will be generated.
-            max_concurrency: Maximum number of workflows that can run concurrently in this group.
-                           If not provided, defaults to the number of workflows in the group.
-                           Must be greater than 0 if specified.
+            *workflows: One or more Workflow instances to include in the group.
+            group_id: Optional unique identifier for the group; generated if omitted.
+            max_concurrency: Maximum number of workflows to run concurrently in this group.
+                Defaults to the number of workflows. Must be greater than 0 if specified.
 
         Returns:
-            WorkflowManager: A new WorkflowManager instance with the added workflow group.
+            A new WorkflowManager instance with the added workflow group.
 
         Raises:
-            ValueError: If group_id already exists or max_concurrency is less than or equal to 0.
+            ValueError: If group_id already exists or max_concurrency <= 0.
         """
         group_ids = self.group_ids
         if group_id is None:
@@ -322,12 +431,29 @@ class WorkflowManager:
         )
 
     def exist_group(self, group_id: GroupID) -> bool:
-        """Check if a workflow exists in the Twrapform object."""
+        """Check whether a group with the given ID exists.
 
+        Args:
+            group_id: The group identifier to search for.
+
+        Returns:
+            True if the group exists, False otherwise.
+        """
         group_ids = self.group_ids
         return group_id in group_ids
 
     def _get_group_index(self, group_id: GroupID) -> int:
+        """Return the index of a group by ID.
+
+        Args:
+            group_id: The ID to locate.
+
+        Returns:
+            The zero-based index of the group.
+
+        Raises:
+            ValueError: If the group_id does not exist.
+        """
         for index, group in enumerate(self.groups):
             if group.group_id == group_id:
                 return index
@@ -335,7 +461,17 @@ class WorkflowManager:
             raise ValueError(f"Group ID {group_id} does not exist")
 
     def remove_group(self, group_id: GroupID) -> WorkflowManager:
-        """Remove a group from the Twrapform object."""
+        """Remove a group by ID.
+
+        Args:
+            group_id: The ID of the group to remove.
+
+        Returns:
+            A new WorkflowManager without the specified group.
+
+        Raises:
+            ValueError: If the group_id does not exist.
+        """
         if not self.exist_group(group_id):
             raise ValueError(f"Group ID {group_id} does not exist")
 
@@ -348,7 +484,11 @@ class WorkflowManager:
         return replace(self, groups=new_groups)
 
     def clear_groups(self) -> WorkflowManager:
-        """Remove all groups from the Twrapform object."""
+        """Remove all groups.
+
+        Returns:
+            A new WorkflowManager containing no groups.
+        """
         return replace(self, groups=tuple())
 
     async def execute(
@@ -362,12 +502,12 @@ class WorkflowManager:
 
         Args:
             start_group_id: Optional group ID to start execution from. If provided,
-                          only groups from this ID onwards will be executed.
+                only groups from this ID onwards will be executed.
             encoding_output: Controls output encoding for command results. If True, uses system
-                          preferred encoding. If string, uses specified encoding. If False,
-                          leaves output as bytes.
+                preferred encoding. If string, uses specified encoding. If False,
+                leaves output as bytes.
             stop_on_error: If True, stops execution when any workflow in a group fails.
-                         If False, continues to next group regardless of failures.
+                If False, continues to next group regardless of failures.
 
         Returns:
             WorkflowManagerResult: Object containing results of all executed workflow groups.
@@ -411,6 +551,27 @@ async def _execute_terraform_tasks(
     output_encoding: str | None = None,
     logger: logging.Logger | None = None,
 ) -> tuple[CommandTaskResult | PreExecutionFailure, ...]:
+    """Execute Terraform tasks sequentially, respecting resource locks.
+
+    For each task:
+      - Optionally acquire a lock to avoid concurrent access to shared resources
+        (e.g., provider plugin cache for init, or the working directory).
+      - Run the Terraform command as a subprocess.
+      - Decode stdout/stderr if output_encoding is provided.
+      - Call pre- and post-execution hooks with deep-copied arguments.
+      - Stop at the first non-zero return code or at the first exception and return collected results.
+
+    Args:
+        work_dir: Directory to run Terraform commands in.
+        terraform_path: Path or name of the Terraform executable.
+        tasks: Ordered tasks to execute.
+        env_vars: Environment variables for the subprocess; defaults to the current environment.
+        output_encoding: Encoding for stdout/stderr; if None, keep as bytes.
+        logger: Logger instance for diagnostic messages.
+
+    Returns:
+        A tuple of CommandTaskResult or PreExecutionFailure for each attempted task.
+    """
     task_results = []
 
     if logger is None:
@@ -490,6 +651,15 @@ async def _execute_terraform_tasks(
 
 
 def _get_encoding_output(encoding_output: bool | str | None) -> str | None:
+    """Normalize the encoding_output parameter to an explicit encoding or None.
+
+    Args:
+        encoding_output: If True, use locale.getpreferredencoding(); if str, use as-is;
+            if False or None, return None.
+
+    Returns:
+        The encoding name to use, or None to keep bytes.
+    """
     if isinstance(encoding_output, bool):
         if encoding_output:
             return locale.getpreferredencoding()
