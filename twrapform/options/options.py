@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass, field, fields
 from types import MappingProxyType
 from typing import Any, Callable, Type
@@ -12,6 +13,7 @@ from .opt_value import (
     list_str_option,
     var_option,
 )
+from .types import FrozenDict
 
 TF_OPTION_METANAME = "tf_options"
 
@@ -87,7 +89,8 @@ class TFCommandOptions:
 
             # Convert dict to MappingProxyType
             if isinstance(field_value, dict):
-                object.__setattr__(self, field_info.name, MappingProxyType(field_value))
+                cp_field_value = copy.deepcopy(field_value)
+                object.__setattr__(self, field_info.name, FrozenDict(cp_field_value))
 
     def convert_command_args(self) -> tuple[str, ...]:
         """Convert this option object to command-line arguments.
@@ -263,7 +266,7 @@ class InitTaskOptions(OutputOptions, LockOptions, InputOptions, TFCommandOptions
         metadata={TF_OPTION_METANAME: UNDERSCORE_BOOL_OPTION_META},
     )
 
-    backend_config: str | MappingProxyType[str, str] | None = field(
+    backend_config: str | FrozenDict | None = field(
         init=True,
         default=None,
         metadata={
@@ -340,7 +343,7 @@ class PlanApplyOptionBase(LockOptions, OutputOptions, InputOptions):
         },
     )
 
-    var: MappingProxyType[str, Any] | None = field(
+    var: dict | FrozenDict | None = field(
         init=True,
         default=None,
         metadata={

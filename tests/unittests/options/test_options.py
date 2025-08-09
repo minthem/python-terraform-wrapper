@@ -1,5 +1,4 @@
 from dataclasses import fields
-from types import MappingProxyType
 
 import pytest
 
@@ -65,7 +64,7 @@ class TestInitTaskOptions:
 
     def test_backend_config_with_mapping_proxy(self):
         """Test backend_config with MappingProxyType."""
-        backend_config = MappingProxyType({"key": "value"})
+        backend_config = {"key": "value"}
         options = InitTaskOptions(backend_config=backend_config)
         assert options.backend_config == backend_config
 
@@ -195,6 +194,25 @@ class TestPlanOptions:
                     'tuple=["1", "2", "3"]',
                 ),
             ),
+            (
+                {
+                    "var": {
+                        "nested_map": {"a": {"b": {"c": 1}}},
+                        "unsupported_types": {
+                            "set": {1, 2, 3},
+                            "tuple": ("1", "2", "3"),
+                        },
+                    },
+                },
+                (
+                    "plan",
+                    "-input=false",
+                    "-var",
+                    'nested_map={"a": {"b": {"c": 1}}}',
+                    "-var",
+                    'unsupported_types={"set": [1, 2, 3], "tuple": ["1", "2", "3"]}',
+                ),
+            ),
         ],
     )
     def test_convert_command_args_parametrized(self, opt_args, expected_result):
@@ -210,9 +228,7 @@ class TestPlanOptions:
             lock=False,
             destroy=True,
             parallelism=3,
-            var=MappingProxyType(
-                {"z_var": "last", "a_var": "first", "b_var": "second"}
-            ),
+            var={"z_var": "last", "a_var": "first", "b_var": "second"},
             target=("resource.b", "resource.a"),
         )
 
@@ -346,6 +362,26 @@ class TestApplyTaskOptions:
                     'tuple=["1", "2", "3"]',
                 ),
             ),
+            (
+                {
+                    "var": {
+                        "nested_map": {"a": {"b": {"c": 1}}},
+                        "unsupported_types": {
+                            "set": {1, 2, 3},
+                            "tuple": ("1", "2", "3"),
+                        },
+                    },
+                },
+                (
+                    "apply",
+                    "-auto-approve",
+                    "-input=false",
+                    "-var",
+                    'nested_map={"a": {"b": {"c": 1}}}',
+                    "-var",
+                    'unsupported_types={"set": [1, 2, 3], "tuple": ["1", "2", "3"]}',
+                ),
+            ),
         ],
     )
     def test_convert_command_args_parametrized(self, opt_args, expected_contains):
@@ -363,9 +399,7 @@ class TestApplyTaskOptions:
             lock=False,
             destroy=True,
             parallelism=3,
-            var=MappingProxyType(
-                {"z_var": "last", "a_var": "first", "b_var": "second"}
-            ),
+            var={"z_var": "last", "a_var": "first", "b_var": "second"},
             target=("resource.b", "resource.a"),
         )
 
