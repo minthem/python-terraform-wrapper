@@ -1,3 +1,4 @@
+import logging
 import os
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -510,7 +511,6 @@ class TestTwrapformExecute:
 class TestTwrapformChangeTaskOption:
     @pytest.fixture
     def twrapform(self):
-        # 初期状態のタスクを設定
         twrapform = (
             Workflow(work_dir="/tmp")
             .add_task(task_id=1, task_option=InitTaskOptions(backend=True))
@@ -540,3 +540,110 @@ class TestTwrapformChangeTaskOption:
         twrapform = Workflow(work_dir="/tmp")
         with pytest.raises(ValueError, match="Task ID 999 does not exist"):
             twrapform.change_task_option(task_id=999, new_option=ApplyTaskOptions())
+
+
+class TestTwrapformHooks:
+
+    @pytest.mark.asyncio
+    async def test_call_hooks(self):
+        init_option = InitTaskOptions(backend=True)
+        plan_option = PlanTaskOptions(parallelism=5)
+        apply_option = ApplyTaskOptions(parallelism=5)
+        output_option = OutputTaskOptions()
+
+        actual = (
+            # init
+            ("pre_hook1", "/tmp", init_option),
+            ("post_hook1", "/tmp", init_option),
+            # plan
+            ("pre_hook2", "/tmp", plan_option),
+            ("post_hook2", "/tmp", plan_option),
+            # apply
+            ("pre_hook1", "/tmp", apply_option),
+            ("post_hook2", "/tmp", apply_option),
+            ("post_hook1", "/tmp", apply_option),
+            # output
+            ("pre_hook1", "/tmp", output_option),
+            ("pre_hook2", "/tmp", output_option),
+            ("post_hook1", "/tmp", output_option),
+            ("post_hook2", "/tmp", output_option),
+        )
+
+        expect = []
+
+        def pre_hook1(workdir, task_option):
+            expect.append(("pre_hook1", workdir, task_option))
+
+        def pre_hook2(workdir, task_option):
+            expect.append(("pre_hook2", workdir, task_option))
+
+        def post_hook1(workdir, task_option, result):
+            expect.append(("post_hook1", workdir, task_option))
+
+        def post_hook2(workdir, task_option, result):
+            expect.append(("post_hook2", workdir, task_option))
+
+        twrapform = (
+            Workflow(work_dir="/tmp")
+            .add_task(
+                task_id=1,
+                task_option=init_option,
+                pre_hooks=[pre_hook1],
+                post_hooks=[post_hook1],
+            )
+            .add_task(
+                task_id=2,
+                task_option=plan_option,
+                pre_hooks=[pre_hook2],
+                post_hooks=[post_hook2],
+            )
+            .add_task(
+                task_id=3,
+                task_option=apply_option,
+                pre_hooks=[pre_hook1],
+                post_hooks=[post_hook2, post_hook1],
+            )
+            .add_task(
+                task_id=4,
+                task_option=output_option,
+                pre_hooks=[pre_hook1, pre_hook2],
+                post_hooks=[post_hook1, post_hook2],
+            )
+        )
+
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
+            mock_proc = AsyncMock()
+            mock_proc.communicate.return_value = (b"success", b"")
+            mock_proc.wait.return_value = 0
+            mock_exec.return_value = mock_proc
+
+            await twrapform.execute()
+
+            assert actual == tuple(expect)
+
+    @pytest.mark.asyncio
+    async def test_ignore_error(self, caplog):
+        def raise_pre_error(workdir, task_option):
+            raise Exception("Pre Error")
+
+        def raise_post_error(workdir, task_option, result):
+            raise Exception("Post Error")
+
+        twrapform = Workflow(work_dir="/tmp").add_task(
+            task_option=InitTaskOptions(),
+            task_id="test1",
+            pre_hooks=[raise_pre_error],
+            post_hooks=[raise_post_error],
+        )
+
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
+            mock_proc = AsyncMock()
+            mock_proc.communicate.return_value = (b"success", b"")
+            mock_proc.wait.return_value = 0
+            mock_exec.return_value = mock_proc
+
+            with caplog.at_level(logging.WARNING):
+                await twrapform.execute()
+
+                assert "Failed running pre hook" in caplog.text
+                assert "Failed running post hook" in caplog.text

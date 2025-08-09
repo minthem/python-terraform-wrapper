@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import locale
 import logging
 import os
@@ -8,25 +9,25 @@ import platform
 import shutil
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import NamedTuple
+from typing import Callable, NamedTuple, Sequence
 
 import hcl2
 
-from ._lock import AsyncResourceLockManager
-from ._logging import get_logger
-from .common import (
+from ._common import (
     GroupID,
-    Task,
     TaskID,
     WorkflowID,
     gen_group_id,
     gen_sequential_id,
     gen_workflow_id,
 )
+from ._lock import AsyncResourceLockManager
+from ._logging import get_logger
 from .options import InitTaskOptions, SupportedTerraformTask
 from .result import (
     CommandTaskResult,
     PreExecutionFailure,
+    TaskResult,
     WorkflowGroupResult,
     WorkflowManagerResult,
     WorkflowResult,
@@ -62,6 +63,25 @@ def _get_terraform_provider_cache_dir(env) -> str | None:
 _lock_manager_instance = AsyncResourceLockManager()
 _provider_cache_dir = _get_terraform_provider_cache_dir(os.environ)
 
+PreHook = Callable[[str | os.PathLike[str], SupportedTerraformTask], None]
+PostHook = Callable[[str | os.PathLike[str], SupportedTerraformTask, TaskResult], None]
+
+
+class Task(NamedTuple):
+    """Execution unit representing a single Terraform command invocation.
+
+    Attributes:
+        task_id: Unique identifier for this task within a workflow.
+        option: A SupportedTerraformTask describing the Terraform command and its arguments.
+        pre_hooks: Hooks executed before the command. Each receives (work_dir, option_copy).
+        post_hooks: Hooks executed after the command. Each receives (work_dir, option_copy, task_result_copy).
+    """
+
+    task_id: TaskID
+    option: SupportedTerraformTask
+    pre_hooks: tuple[PreHook, ...] = ()
+    post_hooks: tuple[PostHook, ...] = ()
+
 
 @dataclass(frozen=True)
 class Workflow:
@@ -96,7 +116,12 @@ class Workflow:
             raise ValueError(f"Task ID {task_id} does not exist")
 
     def add_task(
-        self, task_option: SupportedTerraformTask, task_id: TaskID | None = None
+        self,
+        task_option: SupportedTerraformTask,
+        task_id: TaskID | None = None,
+        *,
+        pre_hooks: Sequence[PreHook] | None = None,
+        post_hooks: Sequence[PostHook] | None = None,
     ) -> Workflow:
         """Add a task to the Twrapform object with the specified options and ID.
 
@@ -122,15 +147,50 @@ class Workflow:
 
         return replace(
             self,
-            tasks=tuple([*self.tasks, Task(task_id=task_id, option=task_option)]),
+            tasks=tuple(
+                [
+                    *self.tasks,
+                    Task(
+                        task_id=task_id,
+                        option=task_option,
+                        pre_hooks=tuple(pre_hooks or ()),
+                        post_hooks=tuple(post_hooks or ()),
+                    ),
+                ]
+            ),
         )
 
-    def change_task_option(self, task_id: TaskID, new_option: SupportedTerraformTask):
-        """Change the option of a task."""
+    def change_task_option(
+        self,
+        task_id: TaskID,
+        new_option: SupportedTerraformTask,
+        *,
+        pre_hooks: Sequence[PreHook] | None = None,
+        post_hooks: Sequence[PostHook] | None = None,
+    ):
+        """Replace an existing task's option and hooks.
+
+        Args:
+            task_id: The ID of the task to modify.
+            new_option: The new Terraform task configuration.
+            pre_hooks: Optional replacement pre-hooks sequence.
+            post_hooks: Optional replacement post-hooks sequence.
+
+        Returns:
+            A new Workflow with the updated task.
+
+        Raises:
+            ValueError: If the task_id does not exist.
+        """
         task_index = self._get_task_index(task_id)
         new_tasks = (
             *self.tasks[:task_index],
-            Task(task_id=task_id, option=new_option),
+            Task(
+                task_id=task_id,
+                option=new_option,
+                pre_hooks=tuple(pre_hooks or ()),
+                post_hooks=tuple(post_hooks or ()),
+            ),
             *self.tasks[task_index + 1 :],
         )
 
@@ -349,9 +409,12 @@ async def _execute_terraform_tasks(
     tasks: tuple[Task, ...],
     env_vars: dict[str, str] | None = None,
     output_encoding: str | None = None,
-    logger: logging.Logger = get_logger(),
+    logger: logging.Logger | None = None,
 ) -> tuple[CommandTaskResult | PreExecutionFailure, ...]:
     task_results = []
+
+    if logger is None:
+        logger = get_logger()
 
     if env_vars is None:
         env_vars = os.environ.copy()
@@ -367,6 +430,8 @@ async def _execute_terraform_tasks(
                 *task.option.convert_command_args(),
             )
 
+            _run_pre_hooks(work_dir, task.task_id, task.option, task.pre_hooks)
+
             if isinstance(task.option, InitTaskOptions):
                 resource_id = str(
                     env_vars.get("TF_PLUGIN_CACHE_DIR")
@@ -376,7 +441,7 @@ async def _execute_terraform_tasks(
             else:
                 resource_id = str(work_dir)
 
-            async with _lock_manager_instance.context(resource_id):
+            async with _lock_manager_instance.get_lock(resource_id):
                 proc = await asyncio.create_subprocess_exec(
                     terraform_path,
                     *cmd_args,
@@ -396,15 +461,19 @@ async def _execute_terraform_tasks(
                 except UnicodeDecodeError as e:
                     logger.warning("[%s] Failed encoding output: %s", task.task_id, e)
 
-            task_results.append(
-                CommandTaskResult(
-                    task_id=task.task_id,
-                    task_option=task.option,
-                    return_code=return_code,
-                    stdout=stdout,
-                    stderr=stderr,
-                )
+            task_result = CommandTaskResult(
+                task_id=task.task_id,
+                task_option=task.option,
+                return_code=return_code,
+                stdout=stdout,
+                stderr=stderr,
             )
+
+            _run_post_hooks(
+                work_dir, task.task_id, task.option, task.post_hooks, task_result
+            )
+
+            task_results.append(task_result)
 
             if return_code != 0:
                 break
@@ -428,3 +497,57 @@ def _get_encoding_output(encoding_output: bool | str | None) -> str | None:
         return None
 
     return encoding_output
+
+
+def _run_pre_hooks(
+    work_dir: os.PathLike[str] | str,
+    task_id: TaskID,
+    option: SupportedTerraformTask,
+    hooks: Sequence[PreHook],
+):
+    """Execute pre-execution hooks safely.
+
+    Each hook is called with (work_dir, deepcopy(option)).
+    Exceptions raised by hooks are caught and logged; execution continues.
+
+    Args:
+        work_dir: The working directory path.
+        task_id: The associated task identifier (for logging).
+        option: The task option to pass to hooks (deep-copied).
+        hooks: A sequence of pre-execution hooks.
+    """
+    logger = get_logger()
+
+    for i, hook in enumerate(hooks):
+        try:
+            hook(work_dir, copy.deepcopy(option))
+        except Exception as e:
+            logger.warning("[%s] Failed running pre hook %s: %s", task_id, i, repr(e))
+
+
+def _run_post_hooks(
+    work_dir: os.PathLike[str] | str,
+    task_id: TaskID,
+    option: SupportedTerraformTask,
+    hooks: Sequence[PostHook],
+    task_result: TaskResult,
+):
+    """Execute post-execution hooks safely.
+
+    Each hook is called with (work_dir, deepcopy(option), deepcopy(task_result)).
+    Exceptions raised by hooks are caught and logged; execution continues.
+
+    Args:
+        work_dir: The working directory path.
+        task_id: The associated task identifier (for logging).
+        option: The task option to pass to hooks (deep-copied).
+        hooks: A sequence of post-execution hooks.
+        task_result: The result object to pass to hooks (deep-copied).
+    """
+    logger = get_logger()
+
+    for i, hook in enumerate(hooks):
+        try:
+            hook(work_dir, copy.deepcopy(option), copy.deepcopy(task_result))
+        except Exception as e:
+            logger.warning("[%s] Failed running post hook %s: %s", task_id, i, repr(e))

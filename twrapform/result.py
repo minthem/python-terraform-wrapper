@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
-from .common import GroupID, TaskID, WorkflowID
+from ._common import GroupID, TaskID, WorkflowID
 from .exception import (
     TwrapformError,
     TwrapformGroupExecutionError,

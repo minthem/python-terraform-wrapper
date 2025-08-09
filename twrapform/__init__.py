@@ -1,6 +1,5 @@
 from . import exception, options, result
-from .common import Task
-from .workflow import Workflow, WorkflowManager
+from .workflow import Task, Workflow, WorkflowManager
 
 __all__ = ["Workflow", "WorkflowManager", "Task", "result", "exception", "options"]
 
