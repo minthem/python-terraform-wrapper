@@ -13,6 +13,7 @@ from typing import NamedTuple
 import hcl2
 
 from ._lock import AsyncResourceLockManager
+from ._logging import get_logger
 from .common import (
     GroupID,
     Task,
@@ -22,7 +23,6 @@ from .common import (
     gen_sequential_id,
     gen_workflow_id,
 )
-from .logging import get_logger
 from .options import InitTaskOptions, SupportedTerraformTask
 from .result import (
     CommandTaskResult,
