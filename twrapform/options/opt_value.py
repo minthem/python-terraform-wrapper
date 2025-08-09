@@ -3,6 +3,8 @@ from collections.abc import Mapping
 from json import dumps
 from typing import Any
 
+from .types import FrozenDict
+
 
 def bool_option(opt_flag: str, value: bool | None) -> tuple[str, ...]:
     if value is not None:
@@ -16,7 +18,7 @@ def bool_flag_option(opt_flag: str, value: bool | None) -> tuple[str, ...]:
 
 
 def backend_config_option(
-    opt_flag: str, value: dict[str, str] | str | None
+    opt_flag: str, value: dict[str, str] | FrozenDict | str | None
 ) -> tuple[str, ...]:
     if value is None:
         return ()
@@ -37,7 +39,7 @@ def list_str_option(opt_flag: str, value: tuple[str, ...] | None) -> tuple[str, 
 
 def var_option(
     opt_flag: str,
-    value: dict[str, Any] | None,
+    value: FrozenDict | dict[str, Any] | None,
 ) -> tuple[str, ...]:
     if value is None:
         return tuple()
@@ -53,7 +55,7 @@ def var_option(
                 opt_flag,
                 f"{key}={str(val)}",
             )
-        elif isinstance(val, (list, tuple, set)):
+        elif isinstance(val, (list, tuple, set, frozenset)):
             if isinstance(val, set):
                 v_list = sorted(list(val))
             else:
@@ -63,8 +65,19 @@ def var_option(
                 f"{key}={dumps(v_list)}",
             )
         elif isinstance(val, Mapping) or val is None:
-            result += (opt_flag, f"{key}={dumps(val, sort_keys=True)}")
+            result += (
+                opt_flag,
+                f"{key}={dumps(val, sort_keys=True, default=_json_serializer)}",
+            )
         else:
             raise TypeError(f"Unsupported type {type(val)} (key: {key}, value: {val})")
 
     return result
+
+
+def _json_serializer(obj):
+    if isinstance(obj, FrozenDict):
+        return obj.export()
+    elif isinstance(obj, frozenset | set | tuple):
+        return list(obj)
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")

@@ -5,6 +5,7 @@ from .options import (
     PlanTaskOptions,
     WorkspaceSelectTaskOptions,
 )
+from .types import FrozenDict
 
 SupportedTerraformTask = (
     InitTaskOptions
@@ -21,4 +22,5 @@ __all__ = [
     "PlanTaskOptions",
     "WorkspaceSelectTaskOptions",
     "SupportedTerraformTask",
+    "FrozenDict",
 ]
