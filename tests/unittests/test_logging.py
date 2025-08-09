@@ -1,6 +1,6 @@
 import logging
 
-from twrapform.logging import get_logger
+from twrapform._logging import get_logger
 
 
 def test_get_logger_info_level(caplog):
