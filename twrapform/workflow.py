@@ -23,7 +23,7 @@ from ._common import (
 )
 from ._lock import AsyncResourceLockManager
 from ._logging import get_logger
-from .options import InitTaskOptions, SupportedTerraformTask
+from .options import InitTaskOptions, TFCommandOptions
 from .result import (
     CommandTaskResult,
     PreExecutionFailure,
@@ -79,8 +79,8 @@ def _get_terraform_provider_cache_dir(env) -> str | None:
 _lock_manager_instance = AsyncResourceLockManager()
 _provider_cache_dir = _get_terraform_provider_cache_dir(os.environ)
 
-PreHook = Callable[[str | os.PathLike[str], SupportedTerraformTask], None]
-PostHook = Callable[[str | os.PathLike[str], SupportedTerraformTask, TaskResult], None]
+PreHook = Callable[[str | os.PathLike[str], TFCommandOptions], None]
+PostHook = Callable[[str | os.PathLike[str], TFCommandOptions, TaskResult], None]
 
 
 class Task(NamedTuple):
@@ -88,13 +88,13 @@ class Task(NamedTuple):
 
     Attributes:
         task_id: Unique identifier for this task within a workflow.
-        option: A SupportedTerraformTask describing the Terraform command and its arguments.
+        option: A TFCommandOptions describing the Terraform command and its arguments.
         pre_hooks: Hooks executed before the command. Each receives (work_dir, option_copy).
         post_hooks: Hooks executed after the command. Each receives (work_dir, option_copy, task_result_copy).
     """
 
     task_id: TaskID
-    option: SupportedTerraformTask
+    option: TFCommandOptions
     pre_hooks: tuple[PreHook, ...] = ()
     post_hooks: tuple[PostHook, ...] = ()
 
@@ -166,7 +166,7 @@ class Workflow:
 
     def add_task(
         self,
-        task_option: SupportedTerraformTask,
+        task_option: TFCommandOptions,
         task_id: TaskID | None = None,
         *,
         pre_hooks: Sequence[PreHook] | None = None,
@@ -215,7 +215,7 @@ class Workflow:
     def change_task_option(
         self,
         task_id: TaskID,
-        new_option: SupportedTerraformTask,
+        new_option: TFCommandOptions,
         *,
         pre_hooks: Sequence[PreHook] | None = None,
         post_hooks: Sequence[PostHook] | None = None,
@@ -672,7 +672,7 @@ def _get_encoding_output(encoding_output: bool | str | None) -> str | None:
 def _run_pre_hooks(
     work_dir: os.PathLike[str] | str,
     task_id: TaskID,
-    option: SupportedTerraformTask,
+    option: TFCommandOptions,
     hooks: Sequence[PreHook],
 ):
     """Execute pre-execution hooks safely.
@@ -698,7 +698,7 @@ def _run_pre_hooks(
 def _run_post_hooks(
     work_dir: os.PathLike[str] | str,
     task_id: TaskID,
-    option: SupportedTerraformTask,
+    option: TFCommandOptions,
     hooks: Sequence[PostHook],
     task_result: TaskResult,
 ):

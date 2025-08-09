@@ -11,13 +11,13 @@ from .exception import (
     TwrapformTaskError,
     WorkflowManagerExecutionError,
 )
-from .options import SupportedTerraformTask
+from .options import TFCommandOptions
 
 
 @dataclass(frozen=True)
 class TaskResult(ABC):
     task_id: TaskID
-    task_option: SupportedTerraformTask
+    task_option: TFCommandOptions
 
     @abstractmethod
     def is_success(self) -> bool: ...

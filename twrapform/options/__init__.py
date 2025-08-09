@@ -3,17 +3,10 @@ from .options import (
     InitTaskOptions,
     OutputTaskOptions,
     PlanTaskOptions,
+    TFCommandOptions,
     WorkspaceSelectTaskOptions,
 )
 from .types import FrozenDict
-
-SupportedTerraformTask = (
-    InitTaskOptions
-    | PlanTaskOptions
-    | ApplyTaskOptions
-    | OutputTaskOptions
-    | WorkspaceSelectTaskOptions
-)
 
 __all__ = [
     "ApplyTaskOptions",
@@ -21,6 +14,6 @@ __all__ = [
     "OutputTaskOptions",
     "PlanTaskOptions",
     "WorkspaceSelectTaskOptions",
-    "SupportedTerraformTask",
+    "TFCommandOptions",
     "FrozenDict",
 ]
