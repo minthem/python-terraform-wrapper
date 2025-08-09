@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+from abc import ABCMeta
 from dataclasses import dataclass, field, fields
 from types import MappingProxyType
 from typing import Any, Callable, Type
@@ -73,7 +74,7 @@ UNDERSCORE_BOOL_FLAG_OPTION_META = FlagOption(
 
 
 @dataclass(frozen=True)
-class TFCommandOptions:
+class TFCommandOptions(metaclass=ABCMeta):
     def __post_init__(self):
         """Post-initialization processing.
 
