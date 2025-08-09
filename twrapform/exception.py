@@ -1,4 +1,4 @@
-from .common import GroupID, TaskID
+from ._common import GroupID, TaskID
 
 
 class TwrapformError(Exception):

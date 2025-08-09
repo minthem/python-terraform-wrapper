@@ -1,4 +1,5 @@
 import json
+import logging
 import shutil
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -13,6 +14,7 @@ from twrapform.exception import (
 )
 from twrapform.options import (
     ApplyTaskOptions,
+    FrozenDict,
     InitTaskOptions,
     OutputTaskOptions,
     PlanTaskOptions,
@@ -193,3 +195,84 @@ async def test_execute_switch_ws(project_path):
         pytest.fail(
             f"pytest failed: {e.message}\n {results.get_result(e.task_id).task_option.convert_command_args()}"
         )
+
+
+@pytest.mark.asyncio
+async def test_execute_output_json_hook(project_path, caplog):
+    plan_vars = {
+        "number": 100,
+        "string": "hello",
+        "boolean": True,
+        "list": ["a", "b", "c"],
+        "tuple": ("a", 123, False),
+        "set": {"a", "b", "c"},
+        "map": {"a": "123", "b": "456"},
+        "object": {"field1": "123", "field2": "456"},
+    }
+
+    def _json_serializer(obj):
+        if isinstance(obj, FrozenDict):
+            return obj.export()
+        elif isinstance(obj, frozenset | set | tuple):
+            return list(obj)
+
+        return obj
+
+    def output_json_hook(workdir, task_option):
+        with open(Path(workdir) / "twrapform.auto.tfvars.json", "w") as tfvars_json:
+            if isinstance(task_option, (PlanTaskOptions, ApplyTaskOptions)):
+                json.dump(
+                    task_option.var.export(),
+                    tfvars_json,
+                    indent=2,
+                    default=_json_serializer,
+                )
+
+    logger = logging.getLogger("twrapform_test")
+
+    def logging_result(workdir, task_option, result):
+        logger.info(
+            f"directory: {workdir}, command: {task_option.command}, result: {result.is_success()}"
+        )
+
+    twrapform = (
+        Workflow(work_dir=project_path)
+        .add_task(
+            task_id="init_1", task_option=InitTaskOptions(), post_hooks=[logging_result]
+        )
+        .add_task(
+            task_id="plan_1",
+            task_option=PlanTaskOptions(var=plan_vars),
+            pre_hooks=[output_json_hook],
+            post_hooks=[logging_result],
+        )
+        .add_task(
+            task_id="apply_1",
+            task_option=ApplyTaskOptions(),
+            post_hooks=[logging_result],
+        )
+        .add_task(
+            task_id="output_1",
+            task_option=OutputTaskOptions(),
+            post_hooks=[logging_result],
+        )
+    )
+
+    with caplog.at_level(logging.INFO, logger="twrapform_test"):
+        results = await twrapform.execute(encoding_output=True)
+
+    assert results.result_count == 4
+
+    try:
+        results.raise_on_error()
+    except TwrapformError as e:
+        pytest.fail(
+            f"pytest failed: {e.message}\n {results.get_result(e.task_id).task_option.convert_command_args()}"
+        )
+
+    # check call pre hooks
+    assert (Path(project_path) / "twrapform.auto.tfvars.json").exists()
+
+    # check call post hooks
+    info_logs = [r for r in caplog.records if r.levelname == "INFO"]
+    assert len(info_logs) == 4
