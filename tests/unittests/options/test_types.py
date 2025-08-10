@@ -5,6 +5,7 @@ import pytest
 from twrapform.options import FrozenDict
 
 
+@pytest.mark.unittest
 def test_basic_access():
     v = FrozenDict({"key": "value", "num": 42})
     assert isinstance(v, Mapping)
@@ -12,6 +13,7 @@ def test_basic_access():
     assert v["num"] == 42
 
 
+@pytest.mark.unittest
 def test_nested_freeze():
     v = FrozenDict({"nested": {"a": 1, "b": [2, 3], "c": {"d": "x"}}})
     assert isinstance(v["nested"], FrozenDict)
@@ -19,6 +21,7 @@ def test_nested_freeze():
     assert isinstance(v["nested"]["c"], FrozenDict)
 
 
+@pytest.mark.unittest
 def test_export_returns_deep_copy():
     v = FrozenDict({"x": [1, 2], "y": {"z": "ok"}})
     exported = v.export()
@@ -29,6 +32,7 @@ def test_export_returns_deep_copy():
     assert v["x"] == (1, 2)
 
 
+@pytest.mark.unittest
 def test_attribute_immutability():
     v = FrozenDict({"a": "b"})
 
@@ -42,12 +46,14 @@ def test_attribute_immutability():
         del v._data
 
 
+@pytest.mark.unittest
 def test_repr_and_len():
     v = FrozenDict({"a": 1, "b": 2})
     assert len(v) == 2
     assert list(v) == ["a", "b"]
 
 
+@pytest.mark.unittest
 def test_deeply_nested_structure():
     v = FrozenDict(
         {
@@ -83,6 +89,7 @@ def test_deeply_nested_structure():
     assert "a" in flags and "b" in flags
 
 
+@pytest.mark.unittest
 def test_export_deep_nesting():
     v = FrozenDict(
         {"nested": {"sub": {"data": [10, {"key": "val"}], "enabled": False}}}

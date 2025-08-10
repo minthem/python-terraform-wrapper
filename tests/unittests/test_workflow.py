@@ -16,6 +16,7 @@ from twrapform.options import (
 from twrapform.result import CommandTaskResult, PreExecutionFailure
 
 
+@pytest.mark.unittest
 class TestTwrapformConstructor:
     """Test cases for TwrapformTask class."""
 
@@ -92,6 +93,7 @@ class TestTwrapformConstructor:
             )
 
 
+@pytest.mark.unittest
 class TestTwrapformAddTask:
     def test_add_task_creates_task_with_default_id(self):
         """タスクIDが指定されない場合、デフォルトのIDでタスクを作成するテスト"""
@@ -123,6 +125,7 @@ class TestTwrapformAddTask:
             twrapform.add_task(task_option=PlanTaskOptions(), task_id=1)
 
 
+@pytest.mark.unittest
 class TestTwrapformRemoveTask:
     def test_remove_task_removes_specified_task(self):
         """指定されたタスクが正しく削除されることを確認"""
@@ -170,6 +173,7 @@ class TestTwrapformRemoveTask:
             twrapform.remove_task(task_id=1)
 
 
+@pytest.mark.unittest
 class TestTwrapformClearTasks:
     def test_clear_tasks_removes_all_tasks(self):
         """全てのタスクが正しく削除されることを確認"""
@@ -199,6 +203,7 @@ class TestTwrapformClearTasks:
         assert twrapform.tasks[1].task_id == 2
 
 
+@pytest.mark.unittest
 class TestTwrapformGetTask:
     def test_get_task_returns_correct_task(self):
         """指定されたタスクIDが正しいタスクを返すことを確認"""
@@ -245,6 +250,7 @@ class TestTwrapformGetTask:
             twrapform.get_task(task_id=1)
 
 
+@pytest.mark.unittest
 class TestTwrapformExecute:
 
     # pytest.mark.asyncio を使った非同期テスト
@@ -508,6 +514,7 @@ class TestTwrapformExecute:
         assert len(result.task_results) == 0
 
 
+@pytest.mark.unittest
 class TestTwrapformChangeTaskOption:
     @pytest.fixture
     def twrapform(self):
@@ -542,6 +549,7 @@ class TestTwrapformChangeTaskOption:
             twrapform.change_task_option(task_id=999, new_option=ApplyTaskOptions())
 
 
+@pytest.mark.unittest
 class TestTwrapformHooks:
 
     @pytest.mark.asyncio
