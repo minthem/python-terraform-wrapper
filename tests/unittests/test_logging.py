@@ -1,8 +1,11 @@
 import logging
 
+import pytest
+
 from twrapform._logging import get_logger
 
 
+@pytest.mark.unittest
 def test_get_logger_info_level(caplog):
     logger = get_logger(logging.INFO)
 
@@ -14,6 +17,7 @@ def test_get_logger_info_level(caplog):
     assert "twrapform" in caplog.text
 
 
+@pytest.mark.unittest
 def test_logger_is_singleton():
     logger1 = get_logger()
     logger2 = get_logger()
