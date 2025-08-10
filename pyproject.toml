@@ -38,7 +38,3 @@ addopts = [
     "--strict-config",
     "--verbose",
 ]
-markers = [
-    "unittest: unit-level tests",
-    "integrationtest: integration-level tests",
-]

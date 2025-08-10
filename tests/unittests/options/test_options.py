@@ -11,7 +11,6 @@ from twrapform.options import (
 )
 
 
-@pytest.mark.unittest
 class TestInitTaskOptions:
     """Test cases for InitTaskOptions class."""
 
@@ -108,7 +107,6 @@ class TestInitTaskOptions:
             assert getattr(new_opt, k) == v
 
 
-@pytest.mark.unittest
 class TestPlanOptions:
     """Test cases for PlanOptions class."""
 
@@ -288,7 +286,6 @@ class TestPlanOptions:
             assert getattr(new_opt, k) == v
 
 
-@pytest.mark.unittest
 class TestApplyTaskOptions:
     """Test cases for ApplyOptions class."""
 
@@ -456,7 +453,6 @@ class TestApplyTaskOptions:
             assert getattr(new_opt, k) == v
 
 
-@pytest.mark.unittest
 class TestOutputOptions:
     """Test cases for OutputOptions class."""
 
@@ -521,7 +517,6 @@ class TestOutputOptions:
             assert getattr(new_opt, k) == v
 
 
-@pytest.mark.unittest
 class TestWorkspaceSelectCommandOptions:
     """Test cases for WorkspaceSelectCommandOptions class."""
 

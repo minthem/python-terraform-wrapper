@@ -32,7 +32,6 @@ def project_path():
         yield tmpdir
 
 
-@pytest.mark.integrationtest
 @pytest.mark.asyncio
 async def test_execute_all_success(project_path):
     plan_option = PlanTaskOptions(
@@ -69,7 +68,6 @@ async def test_execute_all_success(project_path):
         )
 
 
-@pytest.mark.integrationtest
 @pytest.mark.asyncio
 async def test_execute_all_success_output_json(project_path):
     plan_option = PlanTaskOptions(
@@ -115,7 +113,6 @@ async def test_execute_all_success_output_json(project_path):
         pytest.fail(e)
 
 
-@pytest.mark.integrationtest
 @pytest.mark.asyncio
 async def test_execute_failed_and_resume(project_path):
     plan_option = PlanTaskOptions(
@@ -164,7 +161,6 @@ async def test_execute_failed_and_resume(project_path):
             pytest.fail(e)
 
 
-@pytest.mark.integrationtest
 @pytest.mark.asyncio
 async def test_execute_switch_ws(project_path):
     vars = {
@@ -201,7 +197,6 @@ async def test_execute_switch_ws(project_path):
         )
 
 
-@pytest.mark.integrationtest
 @pytest.mark.asyncio
 async def test_execute_output_json_hook(project_path, caplog):
     plan_vars = {

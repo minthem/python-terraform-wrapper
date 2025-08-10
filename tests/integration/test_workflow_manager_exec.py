@@ -90,7 +90,6 @@ def workflow_3_1(project_path_base, base_tasks):
     return Workflow(work_dir=project_path_base / "stage3" / "task1", tasks=base_tasks)
 
 
-@pytest.mark.integrationtest
 @pytest.mark.asyncio
 async def test_all_success(
     workflow_1_1, workflow_1_2, workflow_2_1, workflow_2_2, workflow_3_1
@@ -109,7 +108,6 @@ async def test_all_success(
     assert result.is_all_success() == True
 
 
-@pytest.mark.integrationtest
 @pytest.mark.asyncio
 async def test_fail_stop_workflow(
     workflow_1_1, workflow_1_2, workflow_2_1_fail, workflow_2_2, workflow_3_1
@@ -128,7 +126,6 @@ async def test_fail_stop_workflow(
     assert result.is_all_success() == False
 
 
-@pytest.mark.integrationtest
 @pytest.mark.asyncio
 async def test_fail_dont_stop_workflow(
     workflow_1_1, workflow_1_2, workflow_2_1_fail, workflow_2_2, workflow_3_1

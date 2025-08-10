@@ -1,7 +1,5 @@
 import textwrap
 
-import pytest
-
 from twrapform.exception import (
     TwrapformError,
     TwrapformPreconditionError,
@@ -9,13 +7,11 @@ from twrapform.exception import (
 )
 
 
-@pytest.mark.unittest
 def test_twrapform_error():
     error = TwrapformError(message="Test error")
     assert error.message == "Test error"
 
 
-@pytest.mark.unittest
 def test_twrapform_precondition_error():
     exc = KeyError("var")
     error = TwrapformPreconditionError(task_id="456", exc=exc)
@@ -27,7 +23,6 @@ def test_twrapform_precondition_error():
     )
 
 
-@pytest.mark.unittest
 def test_twrapform_task_error():
     error = TwrapformTaskError(
         task_id="789",

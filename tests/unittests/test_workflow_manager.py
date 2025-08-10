@@ -23,7 +23,6 @@ def workflow_manager_2(workflow_manager_1) -> WorkflowManager:
     )
 
 
-@pytest.mark.unittest
 class TestWorkflowManager:
     def test_add_workflows_group1(self):
         manager = WorkflowManager()
@@ -101,7 +100,6 @@ class TestWorkflowManager:
             )
 
 
-@pytest.mark.unittest
 class TestWorkflowManagerExecute:
     @pytest.fixture()
     def success_parallel(self):
