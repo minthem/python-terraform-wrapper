@@ -2,14 +2,13 @@ name: Run Tests on PR
 
 on:
   pull_request:
-    branches:
-      - main
-      - develop
+    types: [opened, synchronize, reopened]
 
 jobs:
-  exec_test:
+  run-tests:
     name: python
     runs-on: ubuntu-latest
+    if: startsWith(github.base_ref, 'develop') || github.base_ref == 'main'
     strategy:
       matrix:
         terraform:
