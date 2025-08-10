@@ -37,6 +37,10 @@ jobs:
           which terraform || :
           terraform --version
 
+      - name: Generate docstring
+        run: |
+          uv run scripts/generate_option_doc.py
+
       - name: Run unittest only on develop branches
         if: startsWith(github.base_ref, 'develop')
         run: uv run pytest -m unittest
