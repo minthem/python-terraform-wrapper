@@ -2,14 +2,13 @@ name: Run Tests on PR
 
 on:
   pull_request:
-    branches:
-      - main
-      - develop
+    types: [opened, synchronize, reopened]
 
 jobs:
-  exec_test:
+  run-tests:
     name: python
     runs-on: ubuntu-latest
+    if: startsWith(github.base_ref, 'develop') || github.base_ref == 'main'
     strategy:
       matrix:
         terraform:
@@ -39,5 +38,14 @@ jobs:
           which terraform || :
           terraform --version
 
-      - name: Run tests
+      - name: Generate docstring
+        run: |
+          uv run scripts/generate_option_doc.py
+
+      - name: Run unittest only on develop
+        if: startsWith(github.head_ref, 'develop')
+        run: uv run pytest -m unittest
+
+      - name: Run full test suite on main
+        if: github.head_ref == 'main'
         run: uv run pytest

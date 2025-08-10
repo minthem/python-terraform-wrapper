@@ -47,8 +47,12 @@ jobs:
 
       - name: Replace version
         run: |
-          sed -i "s/^version *= *['\"]0.0.0['\"]\$/version = \"${{ env.VERSION }}\"/" pyproject.toml
+          uv version ${{ env.VERSION }}
           sed -i "s/^__version__ = ['\"]0.0.0['\"]\$/__version__ = \"${{ env.VERSION }}\"/" twrapform/__init__.py
+
+      - name: Generate docstring
+        run: |
+          uv run scripts/generate_option_doc.py
 
       - name: Build a binary wheel and a source tarball
         run: uv build
