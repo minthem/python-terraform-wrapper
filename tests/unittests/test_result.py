@@ -124,6 +124,7 @@ def failed_group(success_failed_tasks):
     return WorkflowGroupResult(group_id="g3", workflow_results=success_failed_tasks)
 
 
+@pytest.mark.unittest
 class TestTwrapformWorkflowResult:
     def test_twrapform_command_task_result_success(self, success_result_1):
         assert success_result_1.is_success() is True
@@ -212,6 +213,7 @@ class TestTwrapformWorkflowResult:
             assert success_task.is_success() is True
 
 
+@pytest.mark.unittest
 class TestWorkflowGroupResult:
 
     def test_workflow_group_result(self, success_workflow):
@@ -267,6 +269,7 @@ class TestWorkflowGroupResult:
         assert group.get_workflow_result("w2") == success_failed_tasks[1]
 
 
+@pytest.mark.unittest
 class TestWorkflowManagerResult:
     def test_workflow_manager_result(self, success_group):
         manager = WorkflowManagerResult(group_results=(success_group,))
