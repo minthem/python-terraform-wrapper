@@ -39,5 +39,10 @@ jobs:
           which terraform || :
           terraform --version
 
-      - name: Run tests
+      - name: Run unittest only on develop
+        if: startsWith(github.head_ref, 'develop')
+        run: uv run pytest -m unittest
+
+      - name: Run full test suite on main
+        if: github.head_ref == 'main'
         run: uv run pytest
