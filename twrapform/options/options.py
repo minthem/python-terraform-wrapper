@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import copy
 from abc import ABCMeta
-from dataclasses import dataclass, field, fields
-from types import MappingProxyType
+from dataclasses import dataclass, field, fields, is_dataclass
 from typing import Any, Callable, Type
 
 from .opt_name import underscore_to_hyphen
@@ -16,7 +15,43 @@ from .opt_value import (
 )
 from .types import FrozenDict
 
-TF_OPTION_METANAME = "tf_options"
+_TF_OPTION_METANAME = "tf_options"
+_TF_OPTION_DESCRIPTION_NAME = "tf_option_description"
+
+
+def _annotate_with_metadata_docstring(cls: type) -> type:
+    if not is_dataclass(cls):
+        raise TypeError(f"{cls.__name__} must be a dataclass")
+
+    doc_lines = []
+    attrs = dict()
+
+    if cls.__doc__:
+        doc_lines.append(cls.__doc__.strip())
+    doc_lines.append("\nAttributes:")
+
+    for base in reversed(cls.__mro__):
+        if is_dataclass(base):
+            for f in fields(base):
+                desc = f.metadata.get(_TF_OPTION_DESCRIPTION_NAME)
+                name = f.name
+                type_hint = f.type
+
+                if isinstance(desc, tuple):
+                    desc_str = " ".join(desc)
+                elif isinstance(desc, str):
+                    desc_str = desc
+                else:
+                    desc_str = "No description."
+
+                attrs[name] = (type_hint, desc_str)
+
+    for key in sorted(attrs.keys()):
+        type_hint, desc_str = attrs[key]
+        doc_lines.append(f"    {key} ({type_hint}): {desc_str}")
+
+    cls.__doc__ = "\n".join(doc_lines)
+    return cls
 
 
 @dataclass(frozen=True)
@@ -117,7 +152,7 @@ class TFCommandOptions(metaclass=ABCMeta):
         sorted_fields = sorted(fields(self), key=lambda f: f.name)
 
         for _field in sorted_fields:
-            tf_meta: FlagOption = _field.metadata.get(TF_OPTION_METANAME)
+            tf_meta: FlagOption = _field.metadata.get(_TF_OPTION_METANAME)
             if tf_meta is None:
                 continue
 
@@ -172,116 +207,134 @@ class OutputOptions:
     """Options that affect Terraform output formatting.
 
     Fields correspond to Terraform CLI flags related to output.
-
-    Attributes:
-        json: If True, emit JSON output (if supported by the command).
-              If None, omit the flag.
-        no_color: If True, disable ANSI colors.
-                  If None, omit the flag.
     """
 
     json: bool | None = field(
         init=True,
         default=None,
-        metadata={TF_OPTION_METANAME: UNDERSCORE_BOOL_FLAG_OPTION_META},
+        metadata={
+            _TF_OPTION_METANAME: UNDERSCORE_BOOL_FLAG_OPTION_META,
+            _TF_OPTION_DESCRIPTION_NAME: (
+                "If True, emit JSON output (if supported by the command). "
+                "If None, omit the flag."
+            ),
+        },
     )
 
     no_color: bool | None = field(
         init=True,
         default=None,
-        metadata={TF_OPTION_METANAME: UNDERSCORE_BOOL_FLAG_OPTION_META},
+        metadata={
+            _TF_OPTION_METANAME: UNDERSCORE_BOOL_FLAG_OPTION_META,
+            _TF_OPTION_DESCRIPTION_NAME: (
+                "If True, disable ANSI colors. If None, omit the flag. "
+            ),
+        },
     )
 
 
 @dataclass(frozen=True)
 class LockOptions:
-    """State locking options for Terraform commands.
-
-    Attributes:
-        lock: If True, attempt to acquire a state lock. If False, skip locking.
-              If None, omit the flag.
-        lock_timeout: Max time in seconds to retry acquiring the lock. If None,
-              omit the flag. Rendered as "--lock-timeout=<N>s".
-    """
+    """State locking options for Terraform commands."""
 
     lock: bool | None = field(
         init=True,
         default=None,
-        metadata={TF_OPTION_METANAME: UNDERSCORE_BOOL_OPTION_META},
+        metadata={
+            _TF_OPTION_METANAME: UNDERSCORE_BOOL_OPTION_META,
+            _TF_OPTION_DESCRIPTION_NAME: (
+                "If True, attempt to acquire a state lock. If False, skip locking. "
+                "If None, omit the flag."
+            ),
+        },
     )
 
     lock_timeout: int | None = field(
         init=True,
         default=None,
         metadata={
-            TF_OPTION_METANAME: FlagOption(
+            _TF_OPTION_METANAME: FlagOption(
                 opt_name_func=underscore_to_hyphen,
                 opt_values_func=lambda n, v: (
                     (f"{n}={str(v)}s",) if v is not None else ()
                 ),
-            )
+            ),
+            _TF_OPTION_DESCRIPTION_NAME: (
+                "Max time in seconds to retry acquiring the lock. If None, "
+                'omit the flag. Rendered as "-lock-timeout=<N>s"'
+            ),
         },
     )
 
 
 @dataclass(frozen=True)
 class InputOptions:
-    """Options that control interactive input.
-
-    Attributes:
-        input: If False (default), run non-interactively. This field is not
-               settable via constructor (init=False).
-    """
+    """Options that control interactive input."""
 
     input: bool | None = field(
         init=False,
         default=False,
-        metadata={TF_OPTION_METANAME: UNDERSCORE_BOOL_OPTION_META},
+        metadata={
+            _TF_OPTION_METANAME: UNDERSCORE_BOOL_OPTION_META,
+            _TF_OPTION_DESCRIPTION_NAME: (
+                "If False (default), run non-interactively. This field is not"
+                "settable via constructor (init=False)."
+            ),
+        },
     )
 
 
+@_annotate_with_metadata_docstring
 @dataclass(frozen=True)
 class InitTaskOptions(OutputOptions, LockOptions, InputOptions, TFCommandOptions):
-    """Options for the "terraform init" command.
-
-    Attributes:
-        backend: If True, initialize the configured backend. If False, skip it.
-                 If None, omit the flag.
-        backend_config: Backend configuration, as a file path string or key/value
-                 mapping (FrozenDict). If None, omit the flag.
-        upgrade: If True, upgrade providers/modules to the latest available.
-                 If None, omit the flag.
-        json: Excluded for compatibility with older Terraform versions.
-    """
+    """Options for the "terraform init" command."""
 
     backend: bool | None = field(
         init=True,
         default=None,
-        metadata={TF_OPTION_METANAME: UNDERSCORE_BOOL_OPTION_META},
+        metadata={
+            _TF_OPTION_METANAME: UNDERSCORE_BOOL_OPTION_META,
+            _TF_OPTION_DESCRIPTION_NAME: (
+                "If True, initialize the configured backend. If False, skip it. If None, omit the flag."
+            ),
+        },
     )
 
     backend_config: str | FrozenDict | None = field(
         init=True,
         default=None,
         metadata={
-            TF_OPTION_METANAME: FlagOption(
+            _TF_OPTION_METANAME: FlagOption(
                 opt_name_func=underscore_to_hyphen,
                 opt_values_func=backend_config_option,
-            )
+            ),
+            _TF_OPTION_DESCRIPTION_NAME: (
+                "Backend configuration, as a file path string or key/value mapping. If None, omit the flag."
+            ),
         },
     )
 
     upgrade: bool | None = field(
         init=True,
         default=None,
-        metadata={TF_OPTION_METANAME: UNDERSCORE_BOOL_FLAG_OPTION_META},
+        metadata={
+            _TF_OPTION_METANAME: UNDERSCORE_BOOL_FLAG_OPTION_META,
+            _TF_OPTION_DESCRIPTION_NAME: (
+                "If True, upgrade providers/modules to the latest available. If None, omit the flag."
+            ),
+        },
     )
 
     # NOTE Exclude because some versions are not supported
     json: bool | None = field(
         init=False,
         default=None,
-        metadata={TF_OPTION_METANAME: UNDERSCORE_BOOL_FLAG_OPTION_META},
+        metadata={
+            _TF_OPTION_METANAME: UNDERSCORE_BOOL_FLAG_OPTION_META,
+            _TF_OPTION_DESCRIPTION_NAME: (
+                "Excluded for compatibility with older Terraform versions."
+            ),
+        },
     )
 
     @property
@@ -292,30 +345,30 @@ class InitTaskOptions(OutputOptions, LockOptions, InputOptions, TFCommandOptions
 
 @dataclass(frozen=True)
 class PlanApplyOptionBase(LockOptions, OutputOptions, InputOptions):
-    """Common options for "terraform plan" and "terraform apply".
-
-    Attributes:
-        destroy: If True, plan a full destroy. If None, omit the flag.
-        target: Resource addresses to limit the operation to. If None, omit.
-        var: Input variables as a dict/FrozenDict. If None, omit.
-        var_file: One or more variable file paths. If None, omit.
-        parallelism: Max concurrent operations. If None, omit.
-    """
+    """Common options for "terraform plan" and "terraform apply"."""
 
     destroy: bool | None = field(
         init=True,
         default=None,
-        metadata={TF_OPTION_METANAME: UNDERSCORE_BOOL_FLAG_OPTION_META},
+        metadata={
+            _TF_OPTION_METANAME: UNDERSCORE_BOOL_FLAG_OPTION_META,
+            _TF_OPTION_DESCRIPTION_NAME: (
+                "If True, plan a full destroy. If None, omit the flag."
+            ),
+        },
     )
 
     target: tuple[str, ...] | None = field(
         init=True,
         default=None,
         metadata={
-            TF_OPTION_METANAME: FlagOption(
+            _TF_OPTION_METANAME: FlagOption(
                 opt_name_func=underscore_to_hyphen,
                 opt_values_func=list_str_option,
-            )
+            ),
+            _TF_OPTION_DESCRIPTION_NAME: (
+                "Resource addresses to limit the operation to. If None, omit."
+            ),
         },
     )
 
@@ -323,10 +376,13 @@ class PlanApplyOptionBase(LockOptions, OutputOptions, InputOptions):
         init=True,
         default=None,
         metadata={
-            TF_OPTION_METANAME: FlagOption(
+            _TF_OPTION_METANAME: FlagOption(
                 opt_name_func=underscore_to_hyphen,
                 opt_values_func=var_option,
-            )
+            ),
+            _TF_OPTION_DESCRIPTION_NAME: (
+                "Input variables as a dict/FrozenDict. If None, omit."
+            ),
         },
     )
 
@@ -334,10 +390,13 @@ class PlanApplyOptionBase(LockOptions, OutputOptions, InputOptions):
         init=True,
         default=None,
         metadata={
-            TF_OPTION_METANAME: FlagOption(
+            _TF_OPTION_METANAME: FlagOption(
                 opt_name_func=underscore_to_hyphen,
                 opt_values_func=list_str_option,
-            )
+            ),
+            _TF_OPTION_DESCRIPTION_NAME: (
+                "One or more variable file paths. If None, omit."
+            ),
         },
     )
 
@@ -345,16 +404,18 @@ class PlanApplyOptionBase(LockOptions, OutputOptions, InputOptions):
         init=True,
         default=None,
         metadata={
-            TF_OPTION_METANAME: FlagOption(
+            _TF_OPTION_METANAME: FlagOption(
                 opt_name_func=underscore_to_hyphen,
                 opt_values_func=lambda n, v: (
                     (f"{n}={str(v)}",) if v is not None else ()
                 ),
-            )
+            ),
+            _TF_OPTION_DESCRIPTION_NAME: "Max concurrent operations. If None, omit.",
         },
     )
 
 
+@_annotate_with_metadata_docstring
 @dataclass(frozen=True)
 class PlanTaskOptions(PlanApplyOptionBase, TFCommandOptions):
     """Options for the "terraform plan" command."""
@@ -365,21 +426,21 @@ class PlanTaskOptions(PlanApplyOptionBase, TFCommandOptions):
         return ("plan",)
 
 
+@_annotate_with_metadata_docstring
 @dataclass(frozen=True)
 class ApplyTaskOptions(PlanApplyOptionBase, TFCommandOptions):
     """Options for the "terraform apply" command.
 
     Inherits planning-related options and adds execution control.
-
-    Attributes:
-        auto_approve: If True, skip interactive approval. Fixed to True
-                      (init=False).
     """
 
     auto_approve: bool = field(
         init=False,
         default=True,
-        metadata={TF_OPTION_METANAME: UNDERSCORE_BOOL_FLAG_OPTION_META},
+        metadata={
+            _TF_OPTION_METANAME: UNDERSCORE_BOOL_FLAG_OPTION_META,
+            _TF_OPTION_DESCRIPTION_NAME: "If True, skip interactive approval. Fixed to True (init=False).",
+        },
     )
 
     @property
@@ -388,6 +449,7 @@ class ApplyTaskOptions(PlanApplyOptionBase, TFCommandOptions):
         return ("apply",)
 
 
+@_annotate_with_metadata_docstring
 @dataclass(frozen=True)
 class OutputTaskOptions(OutputOptions, TFCommandOptions):
     """Options for the "terraform output" command."""
@@ -398,25 +460,28 @@ class OutputTaskOptions(OutputOptions, TFCommandOptions):
         return ("output",)
 
 
+@_annotate_with_metadata_docstring
 @dataclass(frozen=True)
 class WorkspaceSelectTaskOptions(TFCommandOptions):
-    """Options for "terraform workspace select".
-
-    Attributes:
-        workspace: Positional workspace name to select.
-        or_create: If True, create the workspace if it does not exist.
-                   If None, omit the flag.
-    """
+    """Options for "terraform workspace select"."""
 
     workspace: str = field(
         init=True,
-        metadata={TF_OPTION_METANAME: PositionalOption()},
+        metadata={
+            _TF_OPTION_METANAME: PositionalOption(),
+            _TF_OPTION_DESCRIPTION_NAME: "Workspace name to select.",
+        },
     )
 
     or_create: bool | None = field(
         init=True,
         default=None,
-        metadata={TF_OPTION_METANAME: UNDERSCORE_BOOL_OPTION_META},
+        metadata={
+            _TF_OPTION_METANAME: UNDERSCORE_BOOL_OPTION_META,
+            _TF_OPTION_DESCRIPTION_NAME: (
+                "If True, create the workspace if it does not exist. If None, omit the flag."
+            ),
+        },
     )
 
     @property
