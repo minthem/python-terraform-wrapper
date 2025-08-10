@@ -19,39 +19,48 @@ _TF_OPTION_METANAME = "tf_options"
 _TF_OPTION_DESCRIPTION_NAME = "tf_option_description"
 
 
-def _annotate_with_metadata_docstring(cls: type) -> type:
-    if not is_dataclass(cls):
-        raise TypeError(f"{cls.__name__} must be a dataclass")
+def _generate_docstring_for_dataclass(
+    summary: str = None, description: str | None = None
+):
+    def _annotate(cls: type) -> type:
+        if not is_dataclass(cls):
+            raise TypeError(f"{cls.__name__} must be a dataclass")
 
-    doc_lines = []
-    attrs = dict()
+        doc_lines = []
+        attrs = dict()
 
-    if cls.__doc__:
-        doc_lines.append(cls.__doc__.strip())
-    doc_lines.append("\nAttributes:")
+        if summary is not None:
+            doc_lines.extend([summary, ""])
 
-    for base in reversed(cls.__mro__):
-        if is_dataclass(base):
-            for f in fields(base):
-                desc = f.metadata.get(_TF_OPTION_DESCRIPTION_NAME)
-                name = f.name
-                type_hint = f.type
+        if description is not None:
+            doc_lines.extend([description, ""])
 
-                if isinstance(desc, tuple):
-                    desc_str = " ".join(desc)
-                elif isinstance(desc, str):
-                    desc_str = desc
-                else:
-                    desc_str = "No description."
+        doc_lines.append("Attributes:")
 
-                attrs[name] = (type_hint, desc_str)
+        for base in reversed(cls.__mro__):
+            if is_dataclass(base):
+                for f in fields(base):
+                    desc = f.metadata.get(_TF_OPTION_DESCRIPTION_NAME)
+                    name = f.name
+                    type_hint = f.type
 
-    for key in sorted(attrs.keys()):
-        type_hint, desc_str = attrs[key]
-        doc_lines.append(f"    {key} ({type_hint}): {desc_str}")
+                    if isinstance(desc, tuple):
+                        desc_str = " ".join(desc)
+                    elif isinstance(desc, str):
+                        desc_str = desc
+                    else:
+                        desc_str = "No description."
 
-    cls.__doc__ = "\n".join(doc_lines)
-    return cls
+                    attrs[name] = (type_hint, desc_str)
+
+        for key in sorted(attrs.keys()):
+            type_hint, desc_str = attrs[key]
+            doc_lines.append(f"    {key} ({type_hint}): {desc_str}")
+
+        cls.__doc__ = "\n".join(doc_lines)
+        return cls
+
+    return _annotate
 
 
 @dataclass(frozen=True)
@@ -284,10 +293,10 @@ class InputOptions:
     )
 
 
-@_annotate_with_metadata_docstring
+@_generate_docstring_for_dataclass(summary='Options for the "terraform init" command.')
 @dataclass(frozen=True)
 class InitTaskOptions(OutputOptions, LockOptions, InputOptions, TFCommandOptions):
-    """Options for the "terraform init" command."""
+    """{{ InitTaskOptions_DOCSTRING }}"""
 
     backend: bool | None = field(
         init=True,
@@ -415,10 +424,12 @@ class PlanApplyOptionBase(LockOptions, OutputOptions, InputOptions):
     )
 
 
-@_annotate_with_metadata_docstring
+@_generate_docstring_for_dataclass(
+    summary='Options for the "terraform plan" command.',
+)
 @dataclass(frozen=True)
 class PlanTaskOptions(PlanApplyOptionBase, TFCommandOptions):
-    """Options for the "terraform plan" command."""
+    """{{ PlanTaskOptions_DOCSTRING }}"""
 
     @property
     def command(self) -> tuple[str, ...]:
@@ -426,13 +437,13 @@ class PlanTaskOptions(PlanApplyOptionBase, TFCommandOptions):
         return ("plan",)
 
 
-@_annotate_with_metadata_docstring
+@_generate_docstring_for_dataclass(
+    summary="Options for the 'terraform apply' command.",
+    description="Inherits planning-related options and adds execution control.",
+)
 @dataclass(frozen=True)
 class ApplyTaskOptions(PlanApplyOptionBase, TFCommandOptions):
-    """Options for the "terraform apply" command.
-
-    Inherits planning-related options and adds execution control.
-    """
+    """{{ ApplyTaskOptions_DOCSTRING }}"""
 
     auto_approve: bool = field(
         init=False,
@@ -449,10 +460,12 @@ class ApplyTaskOptions(PlanApplyOptionBase, TFCommandOptions):
         return ("apply",)
 
 
-@_annotate_with_metadata_docstring
+@_generate_docstring_for_dataclass(
+    summary='Options for the "terraform output" command.',
+)
 @dataclass(frozen=True)
 class OutputTaskOptions(OutputOptions, TFCommandOptions):
-    """Options for the "terraform output" command."""
+    """{{ OutputTaskOptions_DOCSTRING }}"""
 
     @property
     def command(self) -> tuple[str, ...]:
@@ -460,10 +473,10 @@ class OutputTaskOptions(OutputOptions, TFCommandOptions):
         return ("output",)
 
 
-@_annotate_with_metadata_docstring
+@_generate_docstring_for_dataclass(summary='Options for "terraform workspace select".')
 @dataclass(frozen=True)
 class WorkspaceSelectTaskOptions(TFCommandOptions):
-    """Options for "terraform workspace select"."""
+    """{{ WorkspaceSelectTaskOptions_DOCSTRING }}"""
 
     workspace: str = field(
         init=True,
