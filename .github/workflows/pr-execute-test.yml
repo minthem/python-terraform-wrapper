@@ -6,7 +6,6 @@ on:
 
 jobs:
   run-tests:
-    name: python
     runs-on: ubuntu-latest
     if: startsWith(github.base_ref, 'develop') || github.base_ref == 'main'
     strategy:
@@ -38,10 +37,10 @@ jobs:
           which terraform || :
           terraform --version
 
-      - name: Run unittest only on develop
-        if: startsWith(github.head_ref, 'develop')
+      - name: Run unittest only on develop branches
+        if: startsWith(github.base_ref, 'develop')
         run: uv run pytest -m unittest
 
       - name: Run full test suite on main
-        if: github.head_ref == 'main'
+        if: github.base_ref == 'main'
         run: uv run pytest
