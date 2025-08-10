@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import copy
 from abc import ABCMeta
-from dataclasses import dataclass, field, fields
-from types import MappingProxyType
+from dataclasses import dataclass, field, fields, is_dataclass
 from typing import Any, Callable, Type
 
 from .opt_name import underscore_to_hyphen
@@ -16,50 +15,102 @@ from .opt_value import (
 )
 from .types import FrozenDict
 
-TF_OPTION_METANAME = "tf_options"
+_TF_OPTION_METANAME = "tf_options"
+_TF_OPTION_DESCRIPTION_NAME = "tf_option_description"
+
+
+def _generate_docstring_for_dataclass(
+    summary: str = None, description: str | None = None
+):
+    def _annotate(cls: type) -> type:
+        if not is_dataclass(cls):
+            raise TypeError(f"{cls.__name__} must be a dataclass")
+
+        doc_lines = []
+        attrs = dict()
+
+        if summary is not None:
+            doc_lines.extend([summary, ""])
+
+        if description is not None:
+            doc_lines.extend([description, ""])
+
+        doc_lines.append("Attributes:")
+
+        for base in reversed(cls.__mro__):
+            if is_dataclass(base):
+                for f in fields(base):
+                    desc = f.metadata.get(_TF_OPTION_DESCRIPTION_NAME)
+                    name = f.name
+                    type_hint = f.type
+
+                    if isinstance(desc, tuple):
+                        desc_str = " ".join(desc)
+                    elif isinstance(desc, str):
+                        desc_str = desc
+                    else:
+                        desc_str = "No description."
+
+                    attrs[name] = (type_hint, desc_str)
+
+        for key in sorted(attrs.keys()):
+            type_hint, desc_str = attrs[key]
+            doc_lines.append(f"    {key} ({type_hint}): {desc_str}")
+
+        cls.__doc__ = "\n".join(doc_lines)
+        return cls
+
+    return _annotate
 
 
 @dataclass(frozen=True)
 class FlagOption:
-    """Metadata class for Terraform command-line options.
+    """Metadata for Terraform-style flag options.
 
-    This class encapsulates the logic for converting Python field names
-    to Terraform command-line option names and values.
+    Encapsulates how a dataclass field name and its value are translated into
+    Terraform CLI arguments.
 
     Attributes:
-        opt_name_func: Function that converts Python field names to option names
-        opt_values_func: Function that converts field values to command-line arguments
+        opt_name_func: Callable that maps a Python field name (e.g. "no_color")
+            to a CLI option name (e.g. "-no-color").
+        opt_values_func: Callable that converts an option name and a Python value
+            into a tuple of CLI arguments. It must return an empty tuple when the
+            value should not produce arguments (e.g. None).
     """
 
     opt_name_func: Callable[[str], str]
     opt_values_func: Callable[[str, Any], tuple[str, ...]]
 
     def get_opt_name(self, name: str) -> str:
-        """Convert a Python field name to a Terraform option name.
+        """Return the CLI option name for a Python field name.
 
         Args:
-            name: The Python field name to convert
+            name: Dataclass field name.
 
         Returns:
-            The converted option name suitable for Terraform CLI
+            A Terraform CLI option name (typically hyphenated).
         """
         return self.opt_name_func(name)
 
     def get_tf_option(self, name: str, values: Any) -> tuple[str, ...]:
-        """Generate Terraform command-line arguments from field name and value.
+        """Convert a field and its value into CLI arguments.
+
+        Delegates to opt_values_func, after transforming the field name with
+        opt_name_func. Implementation should return an empty tuple if the value
+        results in no arguments.
 
         Args:
-            name: The field name
-            values: The field value
+            name: Dataclass field name.
+            values: Field value.
 
         Returns:
-            A tuple of command-line arguments for Terraform
+            Tuple of CLI arguments (possibly empty).
         """
         return self.opt_values_func(self.get_opt_name(name), values)
 
 
 class PositionalOption:
-    """Metadata class for Terraform positional command-line arguments."""
+    """Marker metadata for positional CLI arguments (no flag name)."""
 
     pass
 
@@ -76,12 +127,11 @@ UNDERSCORE_BOOL_FLAG_OPTION_META = FlagOption(
 @dataclass(frozen=True)
 class TFCommandOptions(metaclass=ABCMeta):
     def __post_init__(self):
-        """Post-initialization processing.
+        """Freeze mutable mapping fields.
 
-        Ensures that dictionary fields are converted to immutable MappingProxyType
-        to maintain the frozen dataclass contract.
+        Converts dict fields to FrozenDict via deep copy to preserve immutability
+        guarantees of a frozen dataclass.
         """
-
         for field_info in fields(self):
             field_value = getattr(self, field_info.name)
 
@@ -94,21 +144,24 @@ class TFCommandOptions(metaclass=ABCMeta):
                 object.__setattr__(self, field_info.name, FrozenDict(cp_field_value))
 
     def convert_command_args(self) -> tuple[str, ...]:
-        """Convert this option object to command-line arguments.
+        """Build the Terraform CLI arguments represented by this instance.
 
-        Processes fields that contain Terraform option metadata and convert them
-        to appropriate command-line arguments using their associated logic.
+        - Starts with the command tuple provided by the command property.
+        - Iterates all fields sorted by name and inspects their metadata:
+          * FlagOption fields are converted to flag/value arguments.
+          * PositionalOption fields are collected and appended last, in the same
+            sorted-field order.
+          * Fields without recognized metadata are ignored.
 
         Returns:
-            A tuple of command-line arguments suitable for Terraform CLI.
+            Tuple of CLI arguments suitable for invocation.
         """
-
         result = self.command
         positional_args = tuple()
         sorted_fields = sorted(fields(self), key=lambda f: f.name)
 
         for _field in sorted_fields:
-            tf_meta: FlagOption = _field.metadata.get(TF_OPTION_METANAME)
+            tf_meta: FlagOption = _field.metadata.get(_TF_OPTION_METANAME)
             if tf_meta is None:
                 continue
 
@@ -126,6 +179,7 @@ class TFCommandOptions(metaclass=ABCMeta):
 
     @property
     def command(self) -> tuple[str, ...]:
+        """Return the Terraform command/subcommand tokens (e.g. ("plan",))."""
         raise NotImplementedError("command_type must be implemented by subclasses")
 
     def convert_option(
@@ -133,6 +187,18 @@ class TFCommandOptions(metaclass=ABCMeta):
         target_class: Type[TFCommandOptions],
         **override_values,
     ) -> TFCommandOptions:
+        """Create a new options object of another type.
+
+        Copies values for fields common to both source and target (where target
+        fields have init=True). Explicit overrides take precedence.
+
+        Args:
+            target_class: Target dataclass type to instantiate.
+            **override_values: Field values to override in the target.
+
+        Returns:
+            A new instance of target_class populated from this instance.
+        """
         source_fields = {f.name for f in fields(self)}
         target_fields = {f.name for f in fields(target_class) if f.init}
 
@@ -147,200 +213,171 @@ class TFCommandOptions(metaclass=ABCMeta):
 
 @dataclass(frozen=True)
 class OutputOptions:
-    """Represents options related to Terraform output formatting.
+    """Options that affect Terraform output formatting.
 
-    This dataclass provides configuration options for formatting Terraform CLI output.
-    Each field corresponds to a specific command-line flag used in Terraform.
-
-    Attributes:
-        json (bool | None): Controls whether the output is formatted as JSON.
-            If True, Terraform output is formatted as JSON.
-            If None, the option is omitted from CLI arguments.
-
-
-        no_color (bool | None): Controls whether color codes are removed from Terraform output.
-            If True, Terraform output will be rendered without ANSI color codes.
-            If None, the option is omitted from CLI arguments.
+    Fields correspond to Terraform CLI flags related to output.
     """
 
     json: bool | None = field(
         init=True,
         default=None,
-        metadata={TF_OPTION_METANAME: UNDERSCORE_BOOL_FLAG_OPTION_META},
+        metadata={
+            _TF_OPTION_METANAME: UNDERSCORE_BOOL_FLAG_OPTION_META,
+            _TF_OPTION_DESCRIPTION_NAME: (
+                "If True, emit JSON output (if supported by the command). "
+                "If None, omit the flag."
+            ),
+        },
     )
 
     no_color: bool | None = field(
         init=True,
         default=None,
-        metadata={TF_OPTION_METANAME: UNDERSCORE_BOOL_FLAG_OPTION_META},
+        metadata={
+            _TF_OPTION_METANAME: UNDERSCORE_BOOL_FLAG_OPTION_META,
+            _TF_OPTION_DESCRIPTION_NAME: (
+                "If True, disable ANSI colors. If None, omit the flag. "
+            ),
+        },
     )
 
 
 @dataclass(frozen=True)
 class LockOptions:
-    """Represents state locking options for Terraform commands.
-
-    This dataclass extends `CommonOptions` to include configuration settings
-    for state locking, which ensures safe concurrent access to Terraform state files.
-    It is used by commands that either modify or read Terraform state.
-
-    Attributes:
-        lock (bool | None): Controls whether state locking is enabled.
-            If True, Terraform will attempt to acquire a state lock before execution.
-            If False, Terraform operations proceed without acquiring a state lock.
-            If None, the option is omitted from CLI arguments.
-
-        lock_timeout (int | None): Specifies the maximum duration (in seconds)
-            to retry acquiring a state lock before failing.
-            If set, Terraform will continue retrying until the timeout is reached.
-            If None, the option is omitted from CLI arguments.
-    """
+    """State locking options for Terraform commands."""
 
     lock: bool | None = field(
         init=True,
         default=None,
-        metadata={TF_OPTION_METANAME: UNDERSCORE_BOOL_OPTION_META},
+        metadata={
+            _TF_OPTION_METANAME: UNDERSCORE_BOOL_OPTION_META,
+            _TF_OPTION_DESCRIPTION_NAME: (
+                "If True, attempt to acquire a state lock. If False, skip locking. "
+                "If None, omit the flag."
+            ),
+        },
     )
 
     lock_timeout: int | None = field(
         init=True,
         default=None,
         metadata={
-            TF_OPTION_METANAME: FlagOption(
+            _TF_OPTION_METANAME: FlagOption(
                 opt_name_func=underscore_to_hyphen,
                 opt_values_func=lambda n, v: (
                     (f"{n}={str(v)}s",) if v is not None else ()
                 ),
-            )
+            ),
+            _TF_OPTION_DESCRIPTION_NAME: (
+                "Max time in seconds to retry acquiring the lock. If None, "
+                'omit the flag. Rendered as "-lock-timeout=<N>s"'
+            ),
         },
     )
 
 
 @dataclass(frozen=True)
 class InputOptions:
-    """Represents input handling options for Terraform commands.
-
-    This dataclass provides configuration settings for controlling
-    whether Terraform prompts for input during execution.
-
-    Attributes:
-        input (bool | None): Controls whether Terraform should request user input.
-            If True, Terraform will prompt for missing variables and options.
-            If False, Terraform will run in non-interactive mode without prompting.
-            If None, the option is omitted from CLI arguments.
-    """
+    """Options that control interactive input."""
 
     input: bool | None = field(
         init=False,
         default=False,
-        metadata={TF_OPTION_METANAME: UNDERSCORE_BOOL_OPTION_META},
+        metadata={
+            _TF_OPTION_METANAME: UNDERSCORE_BOOL_OPTION_META,
+            _TF_OPTION_DESCRIPTION_NAME: (
+                "If False (default), run non-interactively. This field is not"
+                "settable via constructor (init=False)."
+            ),
+        },
     )
 
 
+@_generate_docstring_for_dataclass(summary='Options for the "terraform init" command.')
 @dataclass(frozen=True)
 class InitTaskOptions(OutputOptions, LockOptions, InputOptions, TFCommandOptions):
-    """Represents options for the Terraform `init` command.
-
-    This dataclass extends multiple option classes to provide configuration
-    settings specific to the `terraform init` command. It includes options
-    for backend initialization, state locking, input behavior, and output formatting.
-
-    Attributes:
-        backend (bool | None): Controls whether the backend should be initialized.
-            If True, Terraform will initialize the configured backend.
-            If False, backend initialization is skipped.
-            If None, the option is omitted from CLI arguments.
-
-        backend_config (str | MappingProxyType[str, str] | None): Specify the backend configuration.
-            This can be provided as a file path or as key-value pairs for backend settings.
-            If None, the option is omitted from CLI arguments.
-
-        upgrade (bool | None): Controls whether Terraform should upgrade modules and plugins.
-            If True, Terraform updates installed modules and providers to the latest versions.
-            If False, existing versions are preserved.
-            If None, the option is omitted from CLI arguments.
-    """
+    """{{ InitTaskOptions_DOCSTRING }}"""
 
     backend: bool | None = field(
         init=True,
         default=None,
-        metadata={TF_OPTION_METANAME: UNDERSCORE_BOOL_OPTION_META},
+        metadata={
+            _TF_OPTION_METANAME: UNDERSCORE_BOOL_OPTION_META,
+            _TF_OPTION_DESCRIPTION_NAME: (
+                "If True, initialize the configured backend. If False, skip it. If None, omit the flag."
+            ),
+        },
     )
 
     backend_config: str | FrozenDict | None = field(
         init=True,
         default=None,
         metadata={
-            TF_OPTION_METANAME: FlagOption(
+            _TF_OPTION_METANAME: FlagOption(
                 opt_name_func=underscore_to_hyphen,
                 opt_values_func=backend_config_option,
-            )
+            ),
+            _TF_OPTION_DESCRIPTION_NAME: (
+                "Backend configuration, as a file path string or key/value mapping. If None, omit the flag."
+            ),
         },
     )
 
     upgrade: bool | None = field(
         init=True,
         default=None,
-        metadata={TF_OPTION_METANAME: UNDERSCORE_BOOL_FLAG_OPTION_META},
+        metadata={
+            _TF_OPTION_METANAME: UNDERSCORE_BOOL_FLAG_OPTION_META,
+            _TF_OPTION_DESCRIPTION_NAME: (
+                "If True, upgrade providers/modules to the latest available. If None, omit the flag."
+            ),
+        },
     )
 
     # NOTE Exclude because some versions are not supported
     json: bool | None = field(
         init=False,
         default=None,
-        metadata={TF_OPTION_METANAME: UNDERSCORE_BOOL_FLAG_OPTION_META},
+        metadata={
+            _TF_OPTION_METANAME: UNDERSCORE_BOOL_FLAG_OPTION_META,
+            _TF_OPTION_DESCRIPTION_NAME: (
+                "Excluded for compatibility with older Terraform versions."
+            ),
+        },
     )
 
     @property
     def command(self) -> tuple[str, ...]:
+        """Return the command tuple for this task."""
         return ("init",)
 
 
 @dataclass(frozen=True)
 class PlanApplyOptionBase(LockOptions, OutputOptions, InputOptions):
-    """Represents options for the Terraform `plan` or `apply` command.
-
-    This dataclass extends multiple option classes to provide configuration
-    settings specific to the `terraform plan` or `terraform apply` command. It includes options
-    for defining plan behavior, resource targeting, variable handling, and concurrency.
-
-    Attributes:
-        destroy (bool | None): Controls whether Terraform creates a plan to destroy all resources.
-            If True, Terraform generates a plan that removes all managed infrastructures.
-            If False, Terraform follows the standard planning process without destruction.
-            If None, the option is omitted from CLI arguments.
-
-        target (tuple[str, ...] | None): Limits planning to specific resources.
-            Accepts one or more resource addresses to restrict changes to selected resources.
-            If None, the option is omitted from CLI arguments.
-
-        var (MappingProxyType[str, Any] | None): Specifies input variables for this run.
-            Provides variables as key-value pairs to customize plan execution.
-            If None, the option is omitted from CLI arguments.
-
-        var_file (tuple[str, ...] | None): Loads variable files to provide predefined configurations.
-            Accepts one or more file paths containing Terraform variable definitions.
-            If None, the option is omitted from CLI arguments.
-
-        parallelism (int | None): Limits concurrent operations during plan execution.
-            Specify the maximum number of resources to process in parallel.
-            If None, the option is omitted from CLI arguments.
-    """
+    """Common options for "terraform plan" and "terraform apply"."""
 
     destroy: bool | None = field(
         init=True,
         default=None,
-        metadata={TF_OPTION_METANAME: UNDERSCORE_BOOL_FLAG_OPTION_META},
+        metadata={
+            _TF_OPTION_METANAME: UNDERSCORE_BOOL_FLAG_OPTION_META,
+            _TF_OPTION_DESCRIPTION_NAME: (
+                "If True, plan a full destroy. If None, omit the flag."
+            ),
+        },
     )
 
     target: tuple[str, ...] | None = field(
         init=True,
         default=None,
         metadata={
-            TF_OPTION_METANAME: FlagOption(
+            _TF_OPTION_METANAME: FlagOption(
                 opt_name_func=underscore_to_hyphen,
                 opt_values_func=list_str_option,
-            )
+            ),
+            _TF_OPTION_DESCRIPTION_NAME: (
+                "Resource addresses to limit the operation to. If None, omit."
+            ),
         },
     )
 
@@ -348,10 +385,13 @@ class PlanApplyOptionBase(LockOptions, OutputOptions, InputOptions):
         init=True,
         default=None,
         metadata={
-            TF_OPTION_METANAME: FlagOption(
+            _TF_OPTION_METANAME: FlagOption(
                 opt_name_func=underscore_to_hyphen,
                 opt_values_func=var_option,
-            )
+            ),
+            _TF_OPTION_DESCRIPTION_NAME: (
+                "Input variables as a dict/FrozenDict. If None, omit."
+            ),
         },
     )
 
@@ -359,10 +399,13 @@ class PlanApplyOptionBase(LockOptions, OutputOptions, InputOptions):
         init=True,
         default=None,
         metadata={
-            TF_OPTION_METANAME: FlagOption(
+            _TF_OPTION_METANAME: FlagOption(
                 opt_name_func=underscore_to_hyphen,
                 opt_values_func=list_str_option,
-            )
+            ),
+            _TF_OPTION_DESCRIPTION_NAME: (
+                "One or more variable file paths. If None, omit."
+            ),
         },
     )
 
@@ -370,84 +413,91 @@ class PlanApplyOptionBase(LockOptions, OutputOptions, InputOptions):
         init=True,
         default=None,
         metadata={
-            TF_OPTION_METANAME: FlagOption(
+            _TF_OPTION_METANAME: FlagOption(
                 opt_name_func=underscore_to_hyphen,
                 opt_values_func=lambda n, v: (
                     (f"{n}={str(v)}",) if v is not None else ()
                 ),
-            )
+            ),
+            _TF_OPTION_DESCRIPTION_NAME: "Max concurrent operations. If None, omit.",
         },
     )
 
 
+@_generate_docstring_for_dataclass(
+    summary='Options for the "terraform plan" command.',
+)
 @dataclass(frozen=True)
 class PlanTaskOptions(PlanApplyOptionBase, TFCommandOptions):
-    """Represents options for the Terraform `plan` command.
-
-    This dataclass extends multiple option classes to provide configuration
-    settings specific to the `terraform plan` command. It includes options
-    for defining plan behavior, resource targeting, variable handling, and concurrency.
-    """
+    """{{ PlanTaskOptions_DOCSTRING }}"""
 
     @property
     def command(self) -> tuple[str, ...]:
+        """Return the command tuple for this task."""
         return ("plan",)
 
 
+@_generate_docstring_for_dataclass(
+    summary="Options for the 'terraform apply' command.",
+    description="Inherits planning-related options and adds execution control.",
+)
 @dataclass(frozen=True)
 class ApplyTaskOptions(PlanApplyOptionBase, TFCommandOptions):
-    """Represents options for the Terraform `apply` command.
-
-    This dataclass extends `PlanCommandOptions` to include configuration settings
-    specific to the `terraform apply` command. It inherits planning-related options
-    while adding settings for automatic execution control.
-
-    Attributes:
-        auto_approve (bool): Controls whether Terraform applies changes without user confirmation.
-            If True, Terraform skips the interactive approval prompt and proceeds with execution.
-            If False, Terraform requires explicit confirmation before applying the plan.
-    """
+    """{{ ApplyTaskOptions_DOCSTRING }}"""
 
     auto_approve: bool = field(
         init=False,
         default=True,
-        metadata={TF_OPTION_METANAME: UNDERSCORE_BOOL_FLAG_OPTION_META},
+        metadata={
+            _TF_OPTION_METANAME: UNDERSCORE_BOOL_FLAG_OPTION_META,
+            _TF_OPTION_DESCRIPTION_NAME: "If True, skip interactive approval. Fixed to True (init=False).",
+        },
     )
 
     @property
     def command(self) -> tuple[str, ...]:
+        """Return the command tuple for this task."""
         return ("apply",)
 
 
+@_generate_docstring_for_dataclass(
+    summary='Options for the "terraform output" command.',
+)
 @dataclass(frozen=True)
 class OutputTaskOptions(OutputOptions, TFCommandOptions):
-    """Represents options for the Terraform `output` command.
-
-    This dataclass extends `OutputOptions` to provide configuration settings
-    specific to `terraform output`. It allows customization of how output values
-    are formatted and returned.
-    """
+    """{{ OutputTaskOptions_DOCSTRING }}"""
 
     @property
     def command(self) -> tuple[str, ...]:
+        """Return the command tuple for this task."""
         return ("output",)
 
 
+@_generate_docstring_for_dataclass(summary='Options for "terraform workspace select".')
 @dataclass(frozen=True)
 class WorkspaceSelectTaskOptions(TFCommandOptions):
-    """Represents options for the Terraform `workspace select` command."""
+    """{{ WorkspaceSelectTaskOptions_DOCSTRING }}"""
 
     workspace: str = field(
         init=True,
-        metadata={TF_OPTION_METANAME: PositionalOption()},
+        metadata={
+            _TF_OPTION_METANAME: PositionalOption(),
+            _TF_OPTION_DESCRIPTION_NAME: "Workspace name to select.",
+        },
     )
 
     or_create: bool | None = field(
         init=True,
         default=None,
-        metadata={TF_OPTION_METANAME: UNDERSCORE_BOOL_OPTION_META},
+        metadata={
+            _TF_OPTION_METANAME: UNDERSCORE_BOOL_OPTION_META,
+            _TF_OPTION_DESCRIPTION_NAME: (
+                "If True, create the workspace if it does not exist. If None, omit the flag."
+            ),
+        },
     )
 
     @property
     def command(self) -> tuple[str, ...]:
+        """Return the command tuple for this task."""
         return "workspace", "select"
